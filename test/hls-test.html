@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HLS Test Page — Video DL</title>
+    <!-- hls.js served locally (copied from node_modules) — no CDN dependency,
+         works offline, no supply-chain exposure. -->
+    <script src="./hls.min.js"></script>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; background: #0f1115; color: #e6e9ef; }
+      h1 { font-size: 18px; }
+      select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #333; background: #1f2430; color: inherit; }
+      video { width: 100%; margin-top: 1rem; background: #000; border-radius: 8px; }
+      .note { color: #8b93a3; font-size: 13px; }
+      code { background: #1f2430; padding: 1px 5px; border-radius: 4px; }
+      .row { display: flex; gap: 8px; align-items: center; margin: 1rem 0; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>HLS Test Page — Video DL extension</h1>
+    <p class="note">
+      Pick a stream and press <b>Load</b>. This fetches the <code>.m3u8</code> so the
+      extension's service worker detects it. Open the extension side panel to see it
+      listed, then download.
+    </p>
+
+    <div class="row">
+      <select id="stream"></select>
+      <button id="load">Load</button>
+    </div>
+    <p class="note" id="desc"></p>
+
+    <video id="video" controls muted playsinline></video>
+
+    <script>
+      // Known-good public, non-DRM HLS test streams.
+      const STREAMS = [
+        {
+          name: 'Mux — Tears of Steel (master, TS) ✅ primary',
+          url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+          desc: 'Multi-variant master, MPEG-TS segments, VOD. The MVP smoke-test target.',
+        },
+        {
+          name: 'Apple — BipBop advanced (master, fMP4/CMAF)',
+          url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+          desc: 'fMP4/CMAF segments with #EXT-X-MAP init segment. Exercises the fMP4 path.',
+        },
+        {
+          name: 'Apple — BipBop 4x3 (master, TS)',
+          url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8',
+          desc: 'Classic TS variant playlist, VOD.',
+        },
+        {
+          name: 'Mux — single media playlist (no master)',
+          url: 'https://test-streams.mux.dev/test_001/stream.m3u8',
+          desc: 'Media playlist without a master — single-quality path.',
+        },
+        {
+          name: 'AES-128 encrypted — paste your own below',
+          url: '',
+          desc: 'No stable public AES-128 sample is guaranteed online. Paste an AES-128 VOD URL into the address-bar param ?url=... to test the decrypt path.',
+        },
+      ];
+
+      const sel = document.getElementById('stream');
+      const desc = document.getElementById('desc');
+      const video = document.getElementById('video');
+      let hls;
+
+      STREAMS.forEach((s, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.textContent = s.name;
+        sel.appendChild(o);
+      });
+
+      // Allow ?url=... override (e.g. for an AES-128 test stream).
+      const override = new URLSearchParams(location.search).get('url');
+
+      function descFor(i) {
+        desc.textContent = STREAMS[i].desc;
+      }
+      sel.addEventListener('change', () => descFor(sel.value));
+      descFor(0);
+
+      function load() {
+        const url = override || STREAMS[sel.value].url;
+        if (!url) {
+          desc.textContent = 'No URL — pick another stream or pass ?url=...';
+          return;
+        }
+        if (hls) hls.destroy();
+        if (window.Hls && Hls.isSupported()) {
+          hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url; // Safari native
+          video.play().catch(() => {});
+        }
+      }
+      document.getElementById('load').addEventListener('click', load);
+      if (override) load();
+    </script>
+  </body>
+</html>
