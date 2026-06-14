@@ -23,10 +23,45 @@ Pure-extension HLS downloader. Vertical-slice smoke test that defines "done" for
 - **No YouTube.** Out of scope (DASH cipher arms race + ToS).
 - **No DRM.** SAMPLE-AES, Widevine, FairPlay → detected but flagged unsupported.
 - **No live streams.** No `#EXT-X-ENDLIST` → flagged unsupported.
-- **No direct-file detection** (`.mp4`/`.webm` `<video src>`) — deferred to phase 2.
-- **No DASH (`.mpd`)** — deferred to phase 2.
 - **No re-encoding/format conversion.** Remux only (`-c copy`).
-- **No MSE/blob reassembly** beyond HLS.
+- **No MSE/blob reassembly** beyond HLS/DASH.
+
+---
+
+## 1b. Phase 2 Scope (current)
+
+Phase 1 (HLS) is implemented. Phase 2 adds two source types:
+
+### Direct files (`.mp4`, `.webm`, `.mov`, `.m4v`, `.ogv`)
+- **Detect** via `webRequest.onHeadersReceived` where `details.type === 'media'`
+  (genuine `<video>/<audio>` playback) and response `Content-Type` is `video/*`
+  (excluding HLS/DASH manifest types). The `type === 'media'` filter is what
+  separates a standalone file from HLS/DASH segments (fetched as
+  `xmlhttprequest` via MSE), avoiding segment noise.
+- Skip segment-like extensions (`.ts`, `.m4s`).
+- **Download** directly with `chrome.downloads.download({ url })` — rides browser
+  cookies, **no ffmpeg, no offscreen**. Size from `Content-Length`.
+- A direct-file `Detection` has `kind: 'file'`, a single variant, `encryption:
+  'none'`, `supported: true`.
+
+### DASH (`.mpd`) — static (VOD) only
+- **Detect** via `Content-Type: application/dash+xml` or `.mpd` URL.
+- **Parse** the MPD: video + audio `AdaptationSet`s, `Representation`s
+  (bandwidth, resolution, codecs), `BaseURL`, and `SegmentTemplate` with
+  `$Number$` (with `SegmentTimeline` or `@duration`-based numbering) and
+  `$RepresentationID$`. Init segment from `initialization` template.
+- **Supported subset:** `type="static"`, `SegmentTemplate` numbering. `SegmentBase`
+  (byte-range single file) and `SegmentList` are out of phase 2; flagged
+  unsupported. `type="dynamic"` (live) flagged unsupported.
+- **Download** (offscreen): pick the chosen video Representation + the best audio
+  Representation, fetch init+media segments for each, concat each track, then
+  **ffmpeg mux**: `ffmpeg -i video -i audio -c copy out.mp4`.
+- A DASH `Detection` has `kind: 'dash'`; `variants` = video Representations.
+
+### Out of phase 2 (still deferred)
+- Stream-to-disk (File System Access) for the memory ceiling.
+- Native companion app.
+- DASH `SegmentBase`/`SegmentList`, live DASH, multi-period MPDs.
 
 ---
 

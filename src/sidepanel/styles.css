@@ -63,6 +63,16 @@ header h1 { font-size: 15px; margin: 0; }
   text-overflow: ellipsis;
 }
 .sub { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.kind {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #233047;
+  color: #9ec5ff;
+}
 
 .actions { display: flex; gap: 6px; align-items: center; }
 select, button {

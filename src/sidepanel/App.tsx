@@ -60,12 +60,31 @@ export function App() {
   }, [refresh]);
 
   const onDownload = useCallback((det: Detection, variant: Variant) => {
+    // Direct files bypass the ffmpeg pipeline — just hand the URL to the
+    // browser's download manager (rides cookies, no remux needed).
+    if (det.kind === 'file') {
+      const ext = (det.manifestUrl.match(/\.(mp4|webm|mov|m4v|ogv|ogg)/i)?.[1] ?? 'mp4').toLowerCase();
+      chrome.downloads.download({
+        url: det.manifestUrl,
+        filename: `${sanitizeFilename(det.pageTitle)}.${ext}`,
+      });
+      setProgressByDetection((prev) => ({
+        ...prev,
+        [det.id]: { jobId: newJobId(), detectionId: det.id, phase: 'done', percent: 100 },
+      }));
+      return;
+    }
+
     const jobId = newJobId();
     jobToDetection.current[jobId] = det.id;
+    const source: DownloadJob['source'] =
+      det.kind === 'dash'
+        ? { type: 'dash', mpdUrl: det.manifestUrl, videoRepId: variant?.repId ?? det.variants[0]?.repId ?? '' }
+        : { type: 'hls', mediaPlaylistUrl: variant?.url ?? det.manifestUrl };
     const job: DownloadJob = {
       jobId,
       detectionId: det.id,
-      mediaPlaylistUrl: variant?.url ?? det.manifestUrl,
+      source,
       headers: det.headers,
       filename: `${sanitizeFilename(det.pageTitle)}.mp4`,
     };

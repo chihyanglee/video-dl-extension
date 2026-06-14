@@ -4,11 +4,12 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A Chrome **Manifest V3** extension that detects non-DRM **HLS** video streams,
-previews them in a side panel, and downloads a selected quality as `.mp4` using
-**ffmpeg.wasm** — pure extension, **no native companion app** (the Video
-DownloadHelper v10 model). Authoritative design + decision log: `SPEC.md`. Status,
-build, and usage: `README.md`.
+A Chrome **Manifest V3** extension that detects non-DRM **HLS** and **DASH**
+streams plus **direct video files**, previews them in a side panel, and downloads
+a selected quality as `.mp4` using **ffmpeg.wasm** — pure extension, **no native
+companion app** (the Video DownloadHelper v10 model). Authoritative design +
+decision log: `SPEC.md` (§1b is the current phase-2 scope). Status, build, and
+usage: `README.md`.
 
 ## Commands
 
@@ -32,9 +33,10 @@ npx esbuild src/shared/m3u8.ts --bundle --format=esm --outfile=/tmp/m.mjs --log-
 node /tmp/test.mjs   # import from /tmp/m.mjs and assert
 ```
 
-This is how `src/shared/m3u8.ts` (parser) and `src/offscreen/decrypt.ts` (AES)
-were verified. Prefer this for any change to parsing or crypto. The end-to-end
-download path (network → ffmpeg.wasm → file) requires loading in Chrome.
+This is how `src/shared/m3u8.ts` (HLS parser), `src/shared/mpd.ts` (DASH parser),
+and `src/offscreen/decrypt.ts` (AES) were verified. Prefer this for any change to
+parsing or crypto. The end-to-end download path (network → ffmpeg.wasm → file)
+requires loading in Chrome.
 
 ## Architecture (three contexts, one job each)
 
@@ -92,11 +94,18 @@ loops).
 
 ## Scope discipline
 
-In: non-DRM HLS **VOD**, TS + fMP4, master + media playlists, AES-128, remux to
-mp4. Out: YouTube, DASH, direct files, DRM (Widevine/FairPlay/SAMPLE-AES), live
-streams, re-encoding/format conversion. Live and DRM are detected but flagged
-`supported: false` — keep that behavior; don't try to download them.
+In: non-DRM HLS **VOD** (TS + fMP4, master/media, AES-128); **DASH** static/VOD
+with `SegmentTemplate` numbering (video + best-audio muxed); **direct files**
+(downloaded via `chrome.downloads`, no ffmpeg). Out: YouTube, DASH
+`SegmentBase`/`SegmentList`/live/multi-period, DRM (Widevine/FairPlay/SAMPLE-AES/
+DASH `ContentProtection`), live HLS, re-encoding/format conversion. Live and DRM
+are detected but flagged `supported: false` — keep that; don't download them.
 
-Before expanding scope (e.g. adding DASH or a native helper), update `SPEC.md`
-first — it's the source of truth for what this project deliberately does and
-doesn't do.
+Per-kind notes: direct files are handled in `App.onDownload` (not the offscreen
+pipeline). DASH has no in-page preview (no dash.js) — `thumbnailFor` returns
+undefined for it and the row shows a placeholder. The `DownloadJob.source` union
+(`hls` | `dash`) selects the offscreen path; files never produce a `DownloadJob`.
+
+Before expanding scope (e.g. DASH `SegmentBase`, dash.js preview, or a native
+helper), update `SPEC.md` first — it's the source of truth for what this project
+deliberately does and doesn't do.

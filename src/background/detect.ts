@@ -5,6 +5,7 @@ import {
   parseMedia,
   type MediaPlaylist,
 } from '../shared/m3u8';
+import { parseMpd } from '../shared/mpd';
 import type { CapturedHeaders, Detection, Variant } from '../shared/types';
 import { addDetection, getDetections } from './store';
 
@@ -14,6 +15,13 @@ const HLS_CONTENT_TYPES = [
   'audio/mpegurl',
   'audio/x-mpegurl',
 ];
+
+const DASH_CONTENT_TYPES = ['application/dash+xml'];
+
+// Direct-file extensions we offer to download. Segment extensions are excluded
+// so HLS/DASH fMP4/TS segments never register as standalone files.
+const FILE_EXT = /\.(mp4|webm|mov|m4v|ogv|ogg)($|\?)/i;
+const SEGMENT_EXT = /\.(ts|m4s|m4a|aac|vtt)($|\?)/i;
 
 // requestId -> captured request headers (in-memory; best-effort across SW life).
 const headerCache = new Map<string, CapturedHeaders>();
@@ -178,6 +186,109 @@ function baseDetection(
   };
 }
 
+/** Fetch + parse a DASH .mpd, classify, and store a Detection. */
+async function classifyDash(
+  mpdUrl: string,
+  tabId: number,
+  pageUrl: string,
+  headers: CapturedHeaders,
+): Promise<void> {
+  const id = hashId(mpdUrl);
+  const existing = await getDetections(tabId);
+  if (existing.some((d) => d.id === id)) return;
+
+  headers.cookie = await ensureCookie(mpdUrl, headers.cookie);
+
+  let text: string;
+  try {
+    const res = await fetch(mpdUrl, { headers: toFetchHeaders(headers), credentials: 'include' });
+    if (!res.ok) return;
+    text = await res.text();
+  } catch {
+    return;
+  }
+  if (!text.includes('<MPD')) return;
+
+  const mpd = parseMpd(text, mpdUrl);
+  const variants: Variant[] = mpd.video.map((r) => ({
+    url: mpdUrl, // segments are resolved from the MPD at download time
+    bandwidth: r.bandwidth,
+    resolution: r.width && r.height ? `${r.width}x${r.height}` : undefined,
+    height: r.height,
+    codecs: r.codecs,
+    repId: r.id,
+  }));
+
+  const pageTitle = await getTabTitle(tabId);
+  const detection: Detection = {
+    id,
+    tabId,
+    manifestUrl: mpdUrl,
+    pageUrl,
+    pageTitle,
+    kind: 'dash',
+    variants,
+    durationSec: mpd.durationSec || undefined,
+    encryption: 'none',
+    live: mpd.type === 'dynamic',
+    supported: mpd.supported && variants.length > 0,
+    unsupportedReason: mpd.supported ? undefined : mpd.reason,
+    headers,
+    detectedAt: Date.now(),
+  };
+
+  if (await addDetection(detection)) {
+    await updateBadge(tabId);
+    chrome.runtime.sendMessage({ type: 'DETECTIONS_CHANGED', tabId }).catch(() => void 0);
+  }
+}
+
+/** Register a direct media file (no fetch needed; metadata from headers). */
+async function classifyFile(
+  fileUrl: string,
+  tabId: number,
+  pageUrl: string,
+  headers: CapturedHeaders,
+  contentLength: number | undefined,
+): Promise<void> {
+  const id = hashId(fileUrl);
+  const existing = await getDetections(tabId);
+  if (existing.some((d) => d.id === id)) return;
+
+  headers.cookie = await ensureCookie(fileUrl, headers.cookie);
+  const pageTitle = await getTabTitle(tabId);
+
+  const detection: Detection = {
+    id,
+    tabId,
+    manifestUrl: fileUrl,
+    pageUrl,
+    pageTitle,
+    kind: 'file',
+    variants: [{ url: fileUrl, bandwidth: 0 }],
+    bytes: contentLength,
+    encryption: 'none',
+    live: false,
+    supported: true,
+    headers,
+    detectedAt: Date.now(),
+  };
+
+  if (await addDetection(detection)) {
+    await updateBadge(tabId);
+    chrome.runtime.sendMessage({ type: 'DETECTIONS_CHANGED', tabId }).catch(() => void 0);
+  }
+}
+
+function looksLikeDashUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return /\.mpd($|\?)/i.test(u.pathname + u.search);
+  } catch {
+    return false;
+  }
+}
+
 export function toFetchHeaders(h: CapturedHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   if (h.referer) out['Referer'] = h.referer;
@@ -202,16 +313,42 @@ export function registerDetection(): void {
       if (details.tabId < 0) return;
       if (details.initiator?.startsWith('chrome-extension://')) return; // our fetch
 
-      const ct = (details.responseHeaders ?? [])
+      const headersList = details.responseHeaders ?? [];
+      const ct = headersList
         .find((h) => h.name.toLowerCase() === 'content-type')
         ?.value?.toLowerCase();
+
       const isHls = looksLikeHlsUrl(details.url) || HLS_CONTENT_TYPES.some((t) => ct?.includes(t));
-      if (!isHls) return;
+      const isDash = looksLikeDashUrl(details.url) || DASH_CONTENT_TYPES.some((t) => ct?.includes(t));
+      // Direct file: a genuine <video>/<audio> media load (not an MSE segment,
+      // which arrives as xmlhttprequest), with a video/* content-type.
+      const isFile =
+        details.type === 'media' &&
+        !!ct &&
+        ct.startsWith('video/') &&
+        !SEGMENT_EXT.test(details.url) &&
+        (FILE_EXT.test(details.url) || ct.includes('mp4') || ct.includes('webm'));
+
+      if (!isHls && !isDash && !isFile) return;
 
       const headers = headerCache.get(details.requestId) ?? {};
       headerCache.delete(details.requestId);
       const pageUrl = details.initiator ?? details.url;
-      void classifyAndStore(details.url, details.tabId, pageUrl, headers);
+
+      if (isHls) {
+        void classifyAndStore(details.url, details.tabId, pageUrl, headers);
+      } else if (isDash) {
+        void classifyDash(details.url, details.tabId, pageUrl, headers);
+      } else if (isFile) {
+        const len = headersList.find((h) => h.name.toLowerCase() === 'content-length')?.value;
+        void classifyFile(
+          details.url,
+          details.tabId,
+          pageUrl,
+          headers,
+          len ? Number(len) : undefined,
+        );
+      }
     },
     { urls: ['<all_urls>'] },
     ['responseHeaders'],

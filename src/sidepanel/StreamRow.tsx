@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Detection, JobProgress, Variant } from '../shared/types';
 import { HoverPreview } from './HoverPreview';
-import { generateThumbnail } from './thumbnail';
+import { thumbnailFor } from './thumbnail';
 
 interface Props {
   detection: Detection;
@@ -31,6 +31,11 @@ function fmtSize(det: Detection, v: Variant): string {
   return mb > 1000 ? `~${(mb / 1000).toFixed(1)} GB` : `~${mb.toFixed(0)} MB`;
 }
 
+function fmtBytes(bytes: number): string {
+  const mb = bytes / 1e6;
+  return mb > 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;
+}
+
 const TERMINAL = new Set(['done', 'error', 'cancelled']);
 
 export function StreamRow({ detection, progress, onDownload, onCancel }: Props) {
@@ -42,10 +47,9 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
 
   useEffect(() => {
     if (thumb || !detection.supported) return;
-    const variantUrl = detection.variants[0]?.url ?? detection.manifestUrl;
     let cancelled = false;
-    generateThumbnail(detection.id, variantUrl)
-      .then((d) => !cancelled && setThumb(d))
+    thumbnailFor(detection)
+      .then((d) => d && !cancelled && setThumb(d))
       .catch(() => void 0);
     return () => {
       cancelled = true;
@@ -54,6 +58,11 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
 
   const variant = detection.variants[selected] ?? detection.variants[0];
   const active = progress && !TERMINAL.has(progress.phase);
+  // hls.js drives HLS preview; files play natively; DASH has no in-page preview.
+  const canHoverPreview =
+    detection.supported && (detection.kind === 'master' || detection.kind === 'media' || detection.kind === 'file');
+  const kindLabel =
+    detection.kind === 'dash' ? 'DASH' : detection.kind === 'file' ? 'FILE' : 'HLS';
 
   return (
     <div
@@ -62,12 +71,15 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
       onMouseLeave={() => setHovered(false)}
     >
       <div className="thumb">
-        {hovered && detection.supported ? (
-          <HoverPreview variantUrl={variant?.url ?? detection.manifestUrl} />
+        {hovered && canHoverPreview ? (
+          <HoverPreview
+            variantUrl={variant?.url ?? detection.manifestUrl}
+            native={detection.kind === 'file'}
+          />
         ) : thumb ? (
           <img src={thumb} alt="" />
         ) : (
-          <div className="thumb-placeholder">{detection.supported ? '…' : '⛔'}</div>
+          <div className="thumb-placeholder">{detection.supported ? '🎬' : '⛔'}</div>
         )}
       </div>
 
@@ -76,8 +88,9 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
           {detection.pageTitle || new URL(detection.manifestUrl).hostname}
         </div>
         <div className="sub">
-          {fmtDuration(detection.durationSec)}
-          {variant && fmtSize(detection, variant) ? ` · ${fmtSize(detection, variant)}` : ''}
+          <span className="kind">{kindLabel}</span>
+          {fmtDuration(detection.durationSec) ? ` · ${fmtDuration(detection.durationSec)}` : ''}
+          {detection.bytes ? ` · ${fmtBytes(detection.bytes)}` : variant && fmtSize(detection, variant) ? ` · ${fmtSize(detection, variant)}` : ''}
           {detection.encryption === 'aes-128' ? ' · 🔒AES' : ''}
         </div>
 
@@ -108,7 +121,11 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
               </select>
             )}
             <button className="dl" onClick={() => onDownload(detection, variant)}>
-              {progress?.phase === 'done' ? 'Download again' : 'Download MP4'}
+              {progress?.phase === 'done'
+                ? 'Download again'
+                : detection.kind === 'file'
+                  ? 'Download'
+                  : 'Download MP4'}
             </button>
             {progress?.phase === 'error' && <span className="err">{progress.error}</span>}
           </div>

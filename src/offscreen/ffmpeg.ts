@@ -53,6 +53,38 @@ export async function remuxToMp4(
   return data;
 }
 
+/**
+ * Mux separate video and audio elementary streams into one MP4 without
+ * re-encoding (DASH delivers video and audio as distinct representations).
+ */
+export async function muxAvToMp4(
+  video: Uint8Array,
+  videoName: string,
+  audio: Uint8Array,
+  audioName: string,
+): Promise<Uint8Array> {
+  const ff = await ensureFfmpeg();
+  const outName = 'out.mp4';
+  await ff.writeFile(videoName, video);
+  await ff.writeFile(audioName, audio);
+  await ff.exec([
+    '-i',
+    videoName,
+    '-i',
+    audioName,
+    '-c',
+    'copy',
+    '-movflags',
+    '+faststart',
+    outName,
+  ]);
+  const data = (await ff.readFile(outName)) as Uint8Array;
+  await ff.deleteFile(videoName).catch(() => void 0);
+  await ff.deleteFile(audioName).catch(() => void 0);
+  await ff.deleteFile(outName).catch(() => void 0);
+  return data;
+}
+
 export function terminate(): void {
   try {
     ffmpeg?.terminate();

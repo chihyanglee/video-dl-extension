@@ -34,32 +34,46 @@
     <video id="video" controls muted playsinline></video>
 
     <script>
-      // Known-good public, non-DRM HLS test streams.
+      // Known-good public, non-DRM test streams. mode controls how the page
+      // triggers detection: 'hls' plays via hls.js; 'dash' just fetches the MPD
+      // (playback would need dash.js, but a fetch is enough to detect); 'file'
+      // sets a native <video src> (request type 'media' → direct-file detect).
       const STREAMS = [
         {
-          name: 'Mux — Tears of Steel (master, TS) ✅ primary',
+          mode: 'hls',
+          name: 'HLS — Mux Tears of Steel (master, TS) ✅ primary',
           url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-          desc: 'Multi-variant master, MPEG-TS segments, VOD. The MVP smoke-test target.',
+          desc: 'HLS multi-variant master, MPEG-TS segments, VOD. The HLS smoke-test target.',
         },
         {
-          name: 'Apple — BipBop advanced (master, fMP4/CMAF)',
+          mode: 'hls',
+          name: 'HLS — Apple BipBop advanced (fMP4/CMAF)',
           url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
-          desc: 'fMP4/CMAF segments with #EXT-X-MAP init segment. Exercises the fMP4 path.',
+          desc: 'HLS fMP4/CMAF segments with #EXT-X-MAP init segment.',
         },
         {
-          name: 'Apple — BipBop 4x3 (master, TS)',
-          url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8',
-          desc: 'Classic TS variant playlist, VOD.',
+          mode: 'dash',
+          name: 'DASH — Big Buck Bunny 30fps (static, SegmentTemplate)',
+          url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
+          desc: 'DASH VOD, separate video + audio AdaptationSets, $Number$ SegmentTemplate. Exercises the DASH mux path. (Page fetches the MPD to trigger detection; download via the side panel.)',
         },
         {
-          name: 'Mux — single media playlist (no master)',
-          url: 'https://test-streams.mux.dev/test_001/stream.m3u8',
-          desc: 'Media playlist without a master — single-quality path.',
+          mode: 'dash',
+          name: 'DASH — DASH-IF envivio (static)',
+          url: 'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd',
+          desc: 'Another DASH VOD with separate audio/video. Detection via MPD fetch.',
         },
         {
-          name: 'AES-128 encrypted — paste your own below',
+          mode: 'file',
+          name: 'FILE — Big Buck Bunny (direct .mp4)',
+          url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+          desc: 'A plain progressive .mp4 played in a native <video>. Triggers direct-file detection (no ffmpeg; downloads as-is).',
+        },
+        {
+          mode: 'hls',
+          name: 'AES-128 / custom — paste your own below',
           url: '',
-          desc: 'No stable public AES-128 sample is guaranteed online. Paste an AES-128 VOD URL into the address-bar param ?url=... to test the decrypt path.',
+          desc: 'Paste any URL via ?url=... (and ?mode=hls|dash|file) — e.g. an AES-128 HLS VOD to test the decrypt path.',
         },
       ];
 
@@ -75,8 +89,10 @@
         sel.appendChild(o);
       });
 
-      // Allow ?url=... override (e.g. for an AES-128 test stream).
-      const override = new URLSearchParams(location.search).get('url');
+      // Allow ?url=... (+ optional ?mode=) override.
+      const params = new URLSearchParams(location.search);
+      const override = params.get('url');
+      const overrideMode = params.get('mode');
 
       function descFor(i) {
         desc.textContent = STREAMS[i].desc;
@@ -85,12 +101,35 @@
       descFor(0);
 
       function load() {
-        const url = override || STREAMS[sel.value].url;
+        const stream = STREAMS[sel.value];
+        const url = override || stream.url;
+        const mode = override ? overrideMode || stream.mode : stream.mode;
         if (!url) {
           desc.textContent = 'No URL — pick another stream or pass ?url=...';
           return;
         }
-        if (hls) hls.destroy();
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        video.removeAttribute('src');
+        video.load();
+
+        if (mode === 'dash') {
+          // No dash.js here — a plain fetch is enough for the extension to
+          // detect the .mpd. Playback is optional for testing detection.
+          desc.textContent = 'Fetching MPD to trigger detection… open the side panel.';
+          fetch(url, { credentials: 'include' })
+            .then(() => (desc.textContent = 'MPD fetched. Check the side panel for the DASH entry.'))
+            .catch((e) => (desc.textContent = 'MPD fetch failed: ' + e));
+          return;
+        }
+        if (mode === 'file') {
+          video.src = url; // native <video> → request type 'media' → file detect
+          video.play().catch(() => {});
+          return;
+        }
+        // hls
         if (window.Hls && Hls.isSupported()) {
           hls = new Hls();
           hls.loadSource(url);

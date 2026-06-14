@@ -1,9 +1,10 @@
 # Video DL — HLS Downloader (Chrome MV3)
 
 A pure-extension Chrome (Manifest V3) video downloader. It detects **non-DRM HLS
-streams** on any page, lists them in a side panel with **thumbnails + on-hover
-preview**, and downloads a chosen quality as a clean **`.mp4`** using
-**ffmpeg.wasm** — entirely in the browser, **no companion app required**.
+and DASH streams plus direct video files** on any page, lists them in a side
+panel with **thumbnails + on-hover preview**, and downloads a chosen quality as a
+clean **`.mp4`** using **ffmpeg.wasm** — entirely in the browser, **no companion
+app required**.
 
 This mirrors the architecture of Video DownloadHelper **v10**, which retired its
 native companion app (CoApp) in December 2025 and moved the muxing into
@@ -15,10 +16,14 @@ ffmpeg.wasm in the browser.
 
 ## Features
 
-- **Automatic detection** of HLS manifests via `webRequest` — matches by URL
-  (`.m3u8`) and by response `Content-Type`.
-- **Classification** of master vs media playlists, quality variants, duration,
-  encryption method, and live-vs-VOD.
+- **Automatic detection** via `webRequest` of HLS manifests (`.m3u8`), DASH
+  manifests (`.mpd`), and direct video files (`<video src>` media loads) — by URL
+  and response `Content-Type`.
+- **Classification** of HLS master/media playlists and DASH representations:
+  quality variants, duration, encryption/DRM, and live-vs-VOD.
+- **DASH download**: parse the MPD, fetch the chosen video representation + best
+  audio representation, and **mux them** into one mp4 with ffmpeg (`-c copy`).
+- **Direct files**: handed straight to the browser download manager — no ffmpeg.
 - **Side panel UI** (React): per-tab stream list, toolbar badge count.
 - **Lazy thumbnails** generated with hls.js → `<canvas>`, cached in
   `chrome.storage`.
@@ -33,13 +38,12 @@ ffmpeg.wasm in the browser.
 
 ### Scope
 
-| In scope (MVP) | Out of scope |
+| In scope | Out of scope |
 |---|---|
-| Non-DRM HLS **VOD** | YouTube (DASH + signature cipher) |
-| TS + fMP4 segments | DASH (`.mpd`) |
-| Master + media playlists | Direct files (`.mp4`/`.webm` `<video src>`) |
-| AES-128 encryption | DRM (Widevine, FairPlay, SAMPLE-AES) |
-| Remux to mp4 (no transcode) | Live streams, format conversion / re-encode |
+| Non-DRM HLS **VOD** (TS + fMP4, master + media, AES-128) | YouTube (DASH + signature cipher) |
+| **DASH** (`.mpd`) static/VOD, `SegmentTemplate` numbering | DASH `SegmentBase`/`SegmentList`, live, multi-period |
+| **Direct files** (`.mp4`/`.webm`/`.mov`/…) | DRM (Widevine, FairPlay, SAMPLE-AES, DASH ContentProtection) |
+| Remux/mux to mp4 (no transcode) | Live streams, format conversion / re-encode |
 
 ---
 
@@ -106,9 +110,10 @@ video-dl-extension/
 └─ src/
    ├─ manifest.config.ts      # MV3 manifest (crxjs defineManifest)
    ├─ shared/
-   │  ├─ types.ts             # Detection, DownloadJob, JobProgress
+   │  ├─ types.ts             # Detection, DownloadJob (source union), JobProgress
    │  ├─ messages.ts          # typed runtime message channel
    │  ├─ m3u8.ts              # HLS manifest parser (master/media/key/endlist)
+   │  ├─ mpd.ts               # DASH MPD parser + segment-URL builder
    │  └─ hash.ts              # stable id hash for manifest URLs
    ├─ background/
    │  ├─ index.ts             # SW entry: listeners, offscreen lifecycle, routing
@@ -116,10 +121,10 @@ video-dl-extension/
    │  └─ store.ts             # per-tab detection state (storage.session)
    ├─ offscreen/
    │  ├─ offscreen.html
-   │  ├─ index.ts             # job runner: fetch → decrypt → concat → remux → save
+   │  ├─ index.ts             # job runner: HLS (fetch→decrypt→remux) + DASH (a/v→mux)
    │  ├─ fetcher.ts           # concurrent segment fetch + retry/backoff
    │  ├─ decrypt.ts           # AES-128-CBC (Web Crypto) + IV derivation
-   │  └─ ffmpeg.ts            # ffmpeg.wasm load + remux
+   │  └─ ffmpeg.ts            # ffmpeg.wasm load + remux (HLS) + a/v mux (DASH)
    └─ sidepanel/
       ├─ index.html
       ├─ main.tsx
@@ -180,11 +185,15 @@ To test the AES-128 path, append your own encrypted VOD URL:
 Core domain logic is verified headlessly by bundling the modules with esbuild and
 running fixtures under Node (Node 24 provides a global WebCrypto):
 
-- **Manifest parser** — master/media classification, variant sorting + URL
+- **HLS parser** (`17/17`) — master/media classification, variant sorting + URL
   resolution, duration summation, ENDLIST (VOD/live), media-sequence,
   AES-128 vs SAMPLE-AES classification, `#EXT-X-MAP`.
-- **Decryption** — AES-128-CBC round-trip and IV derivation (explicit IV +
-  sequence-number default).
+- **Decryption** (`5/5`) — AES-128-CBC round-trip and IV derivation (explicit IV
+  + sequence-number default).
+- **DASH MPD parser** (`18/18`) — ISO-8601 duration, video/audio representation
+  classification + sorting, `BaseURL` resolution, `SegmentTemplate` with
+  `$Number$`/`$RepresentationID$`/`%0Nd` and `SegmentTimeline`, segment-count from
+  `@duration`, live + `ContentProtection` flagged unsupported.
 
 The end-to-end download (network → ffmpeg.wasm → file) must be verified by
 loading the extension in Chrome against the test page above — it cannot be
