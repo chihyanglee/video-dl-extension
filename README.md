@@ -195,9 +195,9 @@ running fixtures under Node (Node 24 provides a global WebCrypto):
   `$Number$`/`$RepresentationID$`/`%0Nd` and `SegmentTimeline`, segment-count from
   `@duration`, live + `ContentProtection` flagged unsupported.
 
-The end-to-end download (network → ffmpeg.wasm → file) must be verified by
-loading the extension in Chrome against the test page above — it cannot be
-exercised headlessly.
+The end-to-end download (network → ffmpeg.wasm → file) cannot be exercised
+headlessly; it has been **verified manually in Chrome** against the test page
+above (HLS, DASH, and direct-file paths).
 
 ---
 
