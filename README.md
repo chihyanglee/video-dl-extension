@@ -140,34 +140,34 @@ video-dl-extension/
 ## Getting started
 
 ### Prerequisites
-- Node.js ≥ 20 (developed on 24), npm ≥ 10
+- Node.js ≥ 20 (developed on 24), pnpm ≥ 9 (developed on 11)
 - Chrome ≥ 116 (for the offscreen + side panel APIs used)
 
 ### Install & build
 
 ```bash
-npm install
-npm run build      # tsc --noEmit && vite build  →  dist/
+pnpm install
+pnpm build      # tsc --noEmit && vite build  →  dist/
 ```
 
 Other scripts:
 
 ```bash
-npm run dev        # Vite dev build with HMR
-npm run typecheck  # tsc --noEmit
-npm run serve:test # serve test/ at http://localhost:8080
+pnpm dev        # Vite dev build with HMR
+pnpm typecheck  # tsc --noEmit
+pnpm serve:test # serve test/ at http://localhost:8080
 ```
 
 ### Load the extension in Chrome
 
-1. `npm run build`
+1. `pnpm build`
 2. Open `chrome://extensions`, enable **Developer mode** (top right).
 3. **Load unpacked** → select the **`dist/`** folder.
 4. Click the extension's toolbar icon to open the **side panel**.
 
 ### Try it on a real stream
 
-1. `npm run serve:test`
+1. `pnpm serve:test`
 2. Open <http://localhost:8080/hls-test.html>.
 3. Pick **“Mux — Tears of Steel”** and press **Load** (this fetches the
    `.m3u8`, triggering detection).

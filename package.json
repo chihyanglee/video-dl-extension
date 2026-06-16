@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@11.6.0",
   "description": "MV3 Chrome extension: detect non-DRM HLS streams, preview, download as mp4 via ffmpeg.wasm",
   "scripts": {
     "dev": "vite",

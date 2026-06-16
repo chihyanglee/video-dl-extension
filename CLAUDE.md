@@ -14,11 +14,11 @@ usage: `README.md`.
 ## Commands
 
 ```bash
-npm install
-npm run build        # tsc --noEmit && vite build  →  dist/   (run this to verify a change compiles)
-npm run typecheck    # tsc --noEmit only
-npm run dev          # Vite HMR
-npm run serve:test   # serve test/ at http://localhost:8080 (hls-test.html)
+pnpm install
+pnpm build        # tsc --noEmit && vite build  →  dist/   (run this to verify a change compiles)
+pnpm typecheck    # tsc --noEmit only
+pnpm dev          # Vite HMR
+pnpm serve:test   # serve test/ at http://localhost:8080 (hls-test.html)
 ```
 
 Load `dist/` as an unpacked extension at `chrome://extensions` (Developer mode).
@@ -29,7 +29,7 @@ with the already-installed esbuild and run fixtures under Node (Node ≥ 20 has 
 global WebCrypto):
 
 ```bash
-npx esbuild src/shared/m3u8.ts --bundle --format=esm --outfile=/tmp/m.mjs --log-level=error
+pnpm exec esbuild src/shared/m3u8.ts --bundle --format=esm --outfile=/tmp/m.mjs --log-level=error
 node /tmp/test.mjs   # import from /tmp/m.mjs and assert
 ```
 
