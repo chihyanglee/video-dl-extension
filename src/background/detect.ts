@@ -72,7 +72,7 @@ async function getTabTitle(tabId: number): Promise<string> {
   }
 }
 
-async function updateBadge(tabId: number): Promise<void> {
+export async function updateBadge(tabId: number): Promise<void> {
   const list = await getDetections(tabId);
   const n = list.filter((d) => d.supported).length;
   await chrome.action.setBadgeText({ tabId, text: n ? String(n) : '' });

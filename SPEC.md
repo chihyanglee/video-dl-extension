@@ -146,9 +146,15 @@ cross-origin-isolation (COOP/COEP) setup. CPU is light because we only remux.
   - **Thumbnail** (lazy, on render, cached in `chrome.storage.local` by manifest id).
   - **Hover preview**: instantiate hls.js mini-player on `mouseenter`, destroy on
     `mouseleave`; single live instance at a time.
-  - Title/hostname, duration, est. size, quality **dropdown** (master variants),
-    **Download** button.
-  - Unsupported (live/DRM) rows greyed with reason badge, no download.
+  - **Editable filename** (inline input, defaults to page title) persisted to the
+    detection as `customName` (`RENAME_DETECTION`); used as the download filename.
+    Output extension shown beside it (`.mp4`, or the file's own extension).
+  - **Dismiss** button (✕) removes the row from the panel — UI-only, it deletes
+    the detection from `storage.session` (`DISMISS_DETECTION`) and updates the
+    badge; it does **not** touch any already-downloaded file. (A dismissed stream
+    may reappear if the page re-requests its manifest.)
+  - duration, est. size, quality **dropdown** (master variants), **Download** button.
+  - Unsupported (live/DRM) rows greyed with reason badge, no download (still dismissable).
 - **Progress**: live progress bar per active job; persists while user browses
   (side panel stays open).
 

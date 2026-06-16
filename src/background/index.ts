@@ -1,6 +1,6 @@
 import { onMessage, type Message } from '../shared/messages';
-import { registerDetection } from './detect';
-import { clearTab, getDetections, updateDetection } from './store';
+import { registerDetection, updateBadge } from './detect';
+import { clearTab, getDetections, removeDetection, updateDetection } from './store';
 
 // --- Detection ---
 registerDetection();
@@ -71,6 +71,15 @@ onMessage(async (msg: Message, _sender) => {
       }
       return { ok: true };
     }
+
+    case 'RENAME_DETECTION':
+      await updateDetection(msg.tabId, msg.id, { customName: msg.name });
+      return { ok: true };
+
+    case 'DISMISS_DETECTION':
+      await removeDetection(msg.tabId, msg.id);
+      await updateBadge(msg.tabId);
+      return { ok: true };
 
     case 'START_DOWNLOAD':
       activeJobs.add(msg.job.jobId);

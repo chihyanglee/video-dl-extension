@@ -56,12 +56,30 @@ header h1 { font-size: 15px; margin: 0; }
 .thumb-placeholder { color: var(--muted); font-size: 18px; }
 
 .meta { flex: 1; min-width: 0; }
-.title {
+.head { display: flex; align-items: center; gap: 4px; }
+.name {
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text);
 }
+.name:hover { border-color: var(--border); }
+.name:focus { border-color: var(--accent); background: #1f2430; outline: none; }
+.ext { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+.dismiss {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.dismiss:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
 .sub { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
 .kind {
   display: inline-block;

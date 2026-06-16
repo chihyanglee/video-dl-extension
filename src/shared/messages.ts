@@ -7,6 +7,8 @@ export type Message =
   | { type: 'START_DOWNLOAD'; job: DownloadJob }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
   | { type: 'SET_THUMBNAIL'; id: StreamId; dataUrl: string }
+  | { type: 'RENAME_DETECTION'; tabId: number; id: StreamId; name: string }
+  | { type: 'DISMISS_DETECTION'; tabId: number; id: StreamId }
   // background -> offscreen
   | { type: 'OFFSCREEN_START'; job: DownloadJob }
   | { type: 'OFFSCREEN_CANCEL'; jobId: string }

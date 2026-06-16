@@ -37,6 +37,7 @@ export interface Detection {
   unsupportedReason?: string;
   headers: CapturedHeaders;
   thumbnailDataUrl?: string;
+  customName?: string; // user-edited base filename (no extension)
   detectedAt: number;
 }
 

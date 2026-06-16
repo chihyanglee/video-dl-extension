@@ -8,6 +8,8 @@ interface Props {
   progress?: JobProgress;
   onDownload: (det: Detection, variant: Variant) => void;
   onCancel: (jobId: string) => void;
+  onRename: (det: Detection, name: string) => void;
+  onDismiss: (det: Detection) => void;
 }
 
 function variantLabel(v: Variant): string {
@@ -38,10 +40,22 @@ function fmtBytes(bytes: number): string {
 
 const TERMINAL = new Set(['done', 'error', 'cancelled']);
 
-export function StreamRow({ detection, progress, onDownload, onCancel }: Props) {
+function defaultName(det: Detection): string {
+  return det.customName ?? det.pageTitle ?? new URL(det.manifestUrl).hostname;
+}
+
+export function StreamRow({
+  detection,
+  progress,
+  onDownload,
+  onCancel,
+  onRename,
+  onDismiss,
+}: Props) {
   const [thumb, setThumb] = useState<string | undefined>(detection.thumbnailDataUrl);
   const [hovered, setHovered] = useState(false);
   const [selected, setSelected] = useState(0); // variant index
+  const [name, setName] = useState(() => defaultName(detection));
   const jobIdRef = useRef<string | undefined>(progress?.jobId);
   if (progress?.jobId) jobIdRef.current = progress.jobId;
 
@@ -63,6 +77,22 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
     detection.supported && (detection.kind === 'master' || detection.kind === 'media' || detection.kind === 'file');
   const kindLabel =
     detection.kind === 'dash' ? 'DASH' : detection.kind === 'file' ? 'FILE' : 'HLS';
+  // Output extension shown next to the editable name (files keep theirs; HLS/DASH → mp4).
+  const outExt =
+    detection.kind === 'file'
+      ? (detection.manifestUrl.match(/\.(mp4|webm|mov|m4v|ogv|ogg)/i)?.[1] ?? 'mp4').toLowerCase()
+      : 'mp4';
+
+  const commitName = () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setName(defaultName(detection)); // empty → revert
+      return;
+    }
+    if (trimmed !== (detection.customName ?? detection.pageTitle)) {
+      onRename(detection, trimmed);
+    }
+  };
 
   return (
     <div
@@ -84,8 +114,23 @@ export function StreamRow({ detection, progress, onDownload, onCancel }: Props) 
       </div>
 
       <div className="meta">
-        <div className="title" title={detection.manifestUrl}>
-          {detection.pageTitle || new URL(detection.manifestUrl).hostname}
+        <div className="head">
+          <input
+            className="name"
+            value={name}
+            spellCheck={false}
+            title={detection.manifestUrl}
+            placeholder="filename"
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+          />
+          <span className="ext">.{outExt}</span>
+          <button className="dismiss" title="Remove from list" onClick={() => onDismiss(detection)}>
+            ✕
+          </button>
         </div>
         <div className="sub">
           <span className="kind">{kindLabel}</span>

@@ -42,6 +42,13 @@ export async function updateDetection(
   await chrome.storage.session.set({ [key(tabId)]: list });
 }
 
+export async function removeDetection(tabId: number, id: string): Promise<void> {
+  const list = await getDetections(tabId);
+  const next = list.filter((d) => d.id !== id);
+  if (next.length === list.length) return;
+  await chrome.storage.session.set({ [key(tabId)]: next });
+}
+
 export async function clearTab(tabId: number): Promise<void> {
   await chrome.storage.session.remove(key(tabId));
 }

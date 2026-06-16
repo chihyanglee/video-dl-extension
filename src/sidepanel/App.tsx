@@ -60,13 +60,14 @@ export function App() {
   }, [refresh]);
 
   const onDownload = useCallback((det: Detection, variant: Variant) => {
+    const baseName = sanitizeFilename(det.customName ?? det.pageTitle);
     // Direct files bypass the ffmpeg pipeline — just hand the URL to the
     // browser's download manager (rides cookies, no remux needed).
     if (det.kind === 'file') {
       const ext = (det.manifestUrl.match(/\.(mp4|webm|mov|m4v|ogv|ogg)/i)?.[1] ?? 'mp4').toLowerCase();
       chrome.downloads.download({
         url: det.manifestUrl,
-        filename: `${sanitizeFilename(det.pageTitle)}.${ext}`,
+        filename: `${baseName}.${ext}`,
       });
       setProgressByDetection((prev) => ({
         ...prev,
@@ -86,7 +87,7 @@ export function App() {
       detectionId: det.id,
       source,
       headers: det.headers,
-      filename: `${sanitizeFilename(det.pageTitle)}.mp4`,
+      filename: `${baseName}.mp4`,
     };
     setProgressByDetection((prev) => ({
       ...prev,
@@ -98,6 +99,29 @@ export function App() {
   const onCancel = useCallback((jobId: string) => {
     chrome.runtime.sendMessage({ type: 'CANCEL_DOWNLOAD', jobId } satisfies Message);
   }, []);
+
+  const onRename = useCallback(
+    (det: Detection, name: string) => {
+      if (tabId == null) return;
+      chrome.runtime.sendMessage({
+        type: 'RENAME_DETECTION',
+        tabId,
+        id: det.id,
+        name,
+      } satisfies Message);
+      setDetections((prev) => prev.map((d) => (d.id === det.id ? { ...d, customName: name } : d)));
+    },
+    [tabId],
+  );
+
+  const onDismiss = useCallback(
+    (det: Detection) => {
+      if (tabId == null) return;
+      chrome.runtime.sendMessage({ type: 'DISMISS_DETECTION', tabId, id: det.id } satisfies Message);
+      setDetections((prev) => prev.filter((d) => d.id !== det.id)); // optimistic
+    },
+    [tabId],
+  );
 
   const supported = detections.filter((d) => d.supported);
   const unsupported = detections.filter((d) => !d.supported);
@@ -120,6 +144,8 @@ export function App() {
           progress={progressByDetection[d.id]}
           onDownload={onDownload}
           onCancel={onCancel}
+          onRename={onRename}
+          onDismiss={onDismiss}
         />
       ))}
     </div>
