@@ -229,7 +229,31 @@ export function App() {
     <div className="app">
       <header>
         <h1>Video DL</h1>
-        <span className="count">{supported.length} found</span>
+        <div className="head-right">
+          <span className="count">{supported.length} found</span>
+          <button
+            className="refresh"
+            title="Refresh detections"
+            aria-label="Refresh detections"
+            disabled={tabId == null}
+            onClick={() => tabId != null && void refresh(tabId)}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <path d="M21 3v6h-6" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {detections.length === 0 && (

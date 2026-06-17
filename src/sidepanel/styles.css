@@ -26,7 +26,24 @@ header {
   margin-bottom: 10px;
 }
 header h1 { font-size: 15px; margin: 0; }
+.head-right { display: flex; align-items: center; gap: 8px; }
 .count { color: var(--muted); font-size: 12px; }
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.refresh:hover:not(:disabled) { color: var(--text); background: #1f2430; border-color: var(--border); }
+.refresh:active:not(:disabled) svg { transform: rotate(-90deg); transition: transform 0.2s ease; }
+.refresh:disabled { opacity: 0.4; cursor: default; }
+.refresh svg { display: block; }
 
 .empty { color: var(--muted); font-size: 12px; }
 
