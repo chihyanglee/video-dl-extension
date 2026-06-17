@@ -72,6 +72,7 @@ async function fetchWithReferer(
 
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
+  const [dev, setDev] = useState<boolean>(() => localStorage.getItem('dev') === '1');
   const [detections, setDetections] = useState<Detection[]>([]);
   const [progressByDetection, setProgressByDetection] = useState<Record<string, JobProgress>>({});
   const jobToDetection = useRef<Record<string, string>>({});
@@ -232,6 +233,18 @@ export function App() {
         <div className="head-right">
           <span className="count">{supported.length} found</span>
           <button
+            className={`devtoggle${dev ? ' on' : ''}`}
+            title="Toggle debug info"
+            aria-pressed={dev}
+            onClick={() => {
+              const next = !dev;
+              setDev(next);
+              localStorage.setItem('dev', next ? '1' : '0');
+            }}
+          >
+            {'</>'}
+          </button>
+          <button
             className="refresh"
             title="Refresh detections"
             aria-label="Refresh detections"
@@ -265,6 +278,7 @@ export function App() {
           key={d.id}
           detection={d}
           progress={progressByDetection[d.id]}
+          dev={dev}
           onDownload={onDownload}
           onCancel={onCancel}
           onRename={onRename}

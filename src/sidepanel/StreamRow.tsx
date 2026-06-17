@@ -6,6 +6,7 @@ import { thumbnailFor } from './thumbnail';
 interface Props {
   detection: Detection;
   progress?: JobProgress;
+  dev?: boolean;
   onDownload: (det: Detection, variant: Variant) => void;
   onCancel: (jobId: string) => void;
   onRename: (det: Detection, name: string) => void;
@@ -47,6 +48,7 @@ function defaultName(det: Detection): string {
 export function StreamRow({
   detection,
   progress,
+  dev,
   onDownload,
   onCancel,
   onRename,
@@ -175,6 +177,44 @@ export function StreamRow({
             </button>
             {progress?.phase === 'error' && <span className="err">{progress.error}</span>}
           </div>
+        )}
+
+        {dev && (
+          <details className="dev" open>
+            <summary>debug</summary>
+            <div className="dev-row">
+              <span className="dev-k">kind</span>
+              <span className="dev-v">{detection.kind}</span>
+            </div>
+            <div className="dev-row">
+              <span className="dev-k">enc</span>
+              <span className="dev-v">{detection.encryption}{detection.live ? ' · live' : ''}</span>
+            </div>
+            <div className="dev-row">
+              <span className="dev-k">url</span>
+              <span className="dev-v dev-mono" onClick={() => navigator.clipboard.writeText(detection.manifestUrl)} title="Click to copy">
+                {detection.manifestUrl}
+              </span>
+            </div>
+            {detection.headers.referer && (
+              <div className="dev-row">
+                <span className="dev-k">referer</span>
+                <span className="dev-v dev-mono">{detection.headers.referer}</span>
+              </div>
+            )}
+            <div className="dev-row">
+              <span className="dev-k">page</span>
+              <span className="dev-v dev-mono">{detection.pageUrl}</span>
+            </div>
+            <div className="dev-row">
+              <span className="dev-k">variants</span>
+              <span className="dev-v dev-mono">
+                {detection.variants
+                  .map((v) => `${variantLabel(v)}${v.repId ? `[${v.repId}]` : ''} ${v.url}`)
+                  .join('\n')}
+              </span>
+            </div>
+          </details>
         )}
       </div>
     </div>
