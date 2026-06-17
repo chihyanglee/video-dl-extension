@@ -220,8 +220,10 @@ export function App() {
     [tabId],
   );
 
-  const supported = detections.filter((d) => d.supported);
-  const unsupported = detections.filter((d) => !d.supported);
+  // Newest first within each group (storage appends in detection order).
+  const byNewest = (a: Detection, b: Detection) => b.detectedAt - a.detectedAt;
+  const supported = detections.filter((d) => d.supported).sort(byNewest);
+  const unsupported = detections.filter((d) => !d.supported).sort(byNewest);
 
   return (
     <div className="app">
