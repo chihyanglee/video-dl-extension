@@ -4,6 +4,7 @@ import type { DownloadJob, JobProgress, StreamId } from './types';
 export type Message =
   // sidepanel -> background
   | { type: 'GET_DETECTIONS'; tabId: number }
+  | { type: 'CLEAR_DETECTIONS'; tabId: number }
   | { type: 'START_DOWNLOAD'; job: DownloadJob }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
   | { type: 'SET_THUMBNAIL'; id: StreamId; dataUrl: string }

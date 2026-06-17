@@ -58,6 +58,11 @@ onMessage(async (msg: Message, _sender) => {
     case 'GET_DETECTIONS':
       return getDetections(msg.tabId);
 
+    case 'CLEAR_DETECTIONS':
+      await clearTab(msg.tabId);
+      await updateBadge(msg.tabId);
+      return { ok: true };
+
     case 'SET_THUMBNAIL': {
       // Find which tab owns this detection id, then patch it.
       const tabs = await chrome.tabs.query({});

@@ -193,10 +193,16 @@ export function App() {
           </button>
           <button
             className="refresh"
-            title="Refresh detections"
-            aria-label="Refresh detections"
+            title="Clear list and re-detect (reloads the page)"
+            aria-label="Clear list and re-detect"
             disabled={tabId == null}
-            onClick={() => tabId != null && void refresh(tabId)}
+            onClick={() => {
+              if (tabId == null) return;
+              void chrome.runtime.sendMessage({ type: 'CLEAR_DETECTIONS', tabId } satisfies Message);
+              setDetections([]);
+              setProgressByDetection({});
+              void chrome.tabs.reload(tabId); // replays network traffic → re-detect
+            }}
           >
             <svg
               width="15"
