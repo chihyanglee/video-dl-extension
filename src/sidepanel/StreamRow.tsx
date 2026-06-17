@@ -122,6 +122,7 @@ export function StreamRow({
             title={detection.manifestUrl}
             placeholder="filename"
             onChange={(e) => setName(e.target.value)}
+            onFocus={(e) => e.target.select()} // select-all so a click replaces the name
             onBlur={commitName}
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
