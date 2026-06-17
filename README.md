@@ -23,14 +23,20 @@ ffmpeg.wasm in the browser.
   quality variants, duration, encryption/DRM, and live-vs-VOD.
 - **DASH download**: parse the MPD, fetch the chosen video representation + best
   audio representation, and **mux them** into one mp4 with ffmpeg (`-c copy`).
-- **Direct files**: handed straight to the browser download manager — no ffmpeg.
-- **Side panel UI** (React): per-tab stream list, toolbar badge count.
+- **Direct files**: fetched in the side panel and saved as a blob (no ffmpeg).
+  The fetch carries the page `Referer` via a scoped `declarativeNetRequest` rule
+  so hotlink-protected CDNs don't return a 403 error page.
+- **Side panel UI** (React): per-tab stream list, toolbar badge count, refresh.
+- **Dev mode** (`</>` toggle): per-detection debug block — manifest URL, captured
+  headers, dedup id, variants, plus live **Probe** (HTTP status + content-type)
+  and **View manifest** tools for diagnosing detection/preview issues.
 - **Lazy thumbnails** generated with hls.js → `<canvas>`, cached in
   `chrome.storage`.
 - **On-hover mini-player** preview (single live instance at a time).
 - **Download pipeline** running in an offscreen document:
   fetch segments (concurrent + retry) → AES-128 decrypt (if needed) → concat →
-  ffmpeg.wasm remux (`-c copy`, no re-encode) → save to Downloads.
+  ffmpeg.wasm remux (`-c copy`, no re-encode) → save via the service worker
+  (`chrome.downloads` isn't available in offscreen documents).
 - **AES-128** encrypted streams supported (decrypted in-JS via Web Crypto).
 - **fMP4 / CMAF** segments supported (`#EXT-X-MAP` init segment).
 - **Progress, retry/backoff, and cancel** per download.
@@ -74,7 +80,9 @@ Three MV3 execution contexts, each with one job:
 **Why an offscreen document?** The MV3 service worker is killed after ~30s idle
 and lacks a stable DOM/Worker environment — it cannot host a multi-minute
 download + wasm job. The offscreen document is the canonical MV3 home for that
-work. The SW only detects, stores, and routes.
+work. The SW only detects, stores, and routes. (One exception: `chrome.downloads`
+isn't exposed to offscreen documents, so the offscreen doc hands its blob URL to
+the SW, which performs the actual save.)
 
 **Why ffmpeg.wasm (single-threaded)?** Multithreaded ffmpeg needs
 `SharedArrayBuffer` → cross-origin isolation (COOP/COEP), which is painful for
@@ -128,9 +136,11 @@ video-dl-extension/
    └─ sidepanel/
       ├─ index.html
       ├─ main.tsx
-      ├─ App.tsx              # tab tracking, detections, job state
+      ├─ App.tsx              # tab tracking, detections, job state, dev toggle
       ├─ StreamRow.tsx        # row: thumbnail, quality, download, progress
+      ├─ DebugPanel.tsx       # dev-mode inspector: probe + manifest viewer
       ├─ HoverPreview.tsx     # on-hover hls.js mini-player
+      ├─ referer.ts           # Referer-rewrite (declarativeNetRequest) + fetch helpers
       ├─ thumbnail.ts         # hls.js → canvas → cached dataURL
       └─ styles.css
 ```
@@ -211,8 +221,10 @@ above (HLS, DASH, and direct-file paths).
   sandbox).
 - **Header expiry:** request headers captured at detection time may expire before
   download on token-protected CDNs; such downloads fail with an error.
-- **`<all_urls>` permission:** required to observe and fetch on arbitrary sites;
-  this is the review-sensitive permission for store submission.
+- **`<all_urls>` + `declarativeNetRequest` permissions:** `<all_urls>` is needed
+  to observe and fetch on arbitrary sites; `declarativeNetRequest` is used to set
+  the `Referer` on our own download fetches (a forbidden `fetch` header). Both are
+  review-sensitive for store submission.
 - **ffmpeg cold load:** the ~32 MB core loads lazily on the first download; the
   UI shows a “preparing” state.
 

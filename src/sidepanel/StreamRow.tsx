@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Detection, JobProgress, Variant } from '../shared/types';
 import { HoverPreview } from './HoverPreview';
 import { thumbnailFor } from './thumbnail';
-import { probe, fetchText, type ProbeResult } from './referer';
+import { DebugPanel } from './DebugPanel';
 
 interface Props {
   detection: Detection;
@@ -61,9 +61,6 @@ export function StreamRow({
   const [name, setName] = useState(() => defaultName(detection));
   const jobIdRef = useRef<string | undefined>(progress?.jobId);
   if (progress?.jobId) jobIdRef.current = progress.jobId;
-  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
-  const [manifest, setManifest] = useState<ProbeResult | null>(null);
-  const [devBusy, setDevBusy] = useState(false);
 
   useEffect(() => {
     if (thumb || !detection.supported) return;
@@ -183,115 +180,7 @@ export function StreamRow({
           </div>
         )}
 
-        {dev && (
-          <details className="dev" open>
-            <summary>
-              debug
-              <button
-                className="dev-copy"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigator.clipboard.writeText(
-                    JSON.stringify(
-                      {
-                        kind: detection.kind,
-                        encryption: detection.encryption,
-                        live: detection.live,
-                        supported: detection.supported,
-                        durationSec: detection.durationSec,
-                        manifestUrl: detection.manifestUrl,
-                        pageUrl: detection.pageUrl,
-                        headers: detection.headers,
-                        variants: detection.variants,
-                      },
-                      null,
-                      2,
-                    ),
-                  );
-                }}
-              >
-                Copy info
-              </button>
-            </summary>
-            <div className="dev-row">
-              <span className="dev-k">kind</span>
-              <span className="dev-v">{detection.kind}</span>
-            </div>
-            <div className="dev-row">
-              <span className="dev-k">enc</span>
-              <span className="dev-v">{detection.encryption}{detection.live ? ' · live' : ''}</span>
-            </div>
-            <div className="dev-row">
-              <span className="dev-k">url</span>
-              <span className="dev-v dev-mono" onClick={() => navigator.clipboard.writeText(detection.manifestUrl)} title="Click to copy">
-                {detection.manifestUrl}
-              </span>
-            </div>
-            {detection.headers.referer && (
-              <div className="dev-row">
-                <span className="dev-k">referer</span>
-                <span className="dev-v dev-mono">{detection.headers.referer}</span>
-              </div>
-            )}
-            <div className="dev-row">
-              <span className="dev-k">page</span>
-              <span className="dev-v dev-mono">{detection.pageUrl}</span>
-            </div>
-            <div className="dev-row">
-              <span className="dev-k">variants</span>
-              <span className="dev-v dev-mono">
-                {detection.variants
-                  .map((v) => `${variantLabel(v)}${v.repId ? `[${v.repId}]` : ''} ${v.url}`)
-                  .join('\n')}
-              </span>
-            </div>
-            <div className="dev-row">
-              <span className="dev-k">id</span>
-              <span className="dev-v dev-mono">{detection.id}</span>
-            </div>
-
-            <div className="dev-actions">
-              <button
-                disabled={devBusy}
-                onClick={async () => {
-                  setDevBusy(true);
-                  setProbeResult(await probe(detection.manifestUrl, detection.headers.referer ?? detection.pageUrl));
-                  setDevBusy(false);
-                }}
-              >
-                Probe
-              </button>
-              <button
-                disabled={devBusy}
-                onClick={async () => {
-                  setDevBusy(true);
-                  setManifest(await fetchText(detection.manifestUrl, detection.headers.referer ?? detection.pageUrl));
-                  setDevBusy(false);
-                }}
-              >
-                View manifest
-              </button>
-            </div>
-
-            {probeResult && (
-              <div className="dev-row">
-                <span className="dev-k">probe</span>
-                <span className="dev-v dev-mono">
-                  {probeResult.error
-                    ? `error: ${probeResult.error}`
-                    : `HTTP ${probeResult.status} · ${probeResult.contentType || '(no content-type)'}`}
-                </span>
-              </div>
-            )}
-            {manifest && (
-              <pre className="dev-manifest">
-                {manifest.error
-                  ? `error: ${manifest.error}`
-                  : `HTTP ${manifest.status} · ${manifest.contentType}\n\n${manifest.text ?? ''}`}
-              </pre>
-            )}
-          </details>
-        )}
+        {dev && <DebugPanel detection={detection} />}
       </div>
     </div>
   );

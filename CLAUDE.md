@@ -48,10 +48,13 @@ requires loading in Chrome.
 - **`src/offscreen/`** — offscreen document. Hosts the entire download pipeline
   because it survives long jobs and has DOM/Workers: `index.ts` orchestrates
   fetch (`fetcher.ts`) → AES-128 decrypt (`decrypt.ts`) → concat → ffmpeg remux
-  (`ffmpeg.ts`) → `chrome.downloads`.
+  (`ffmpeg.ts`) → save. `chrome.downloads` is **not** exposed to offscreen docs,
+  so it sends the blob URL to the SW (`OFFSCREEN_SAVE`) which does the download.
 - **`src/sidepanel/`** — React UI. Stream list, lazy cached thumbnails
   (`thumbnail.ts`), on-hover mini-player (`HoverPreview.tsx`), quality selection,
-  progress (`StreamRow.tsx`, `App.tsx`).
+  progress (`StreamRow.tsx`, `App.tsx`), dev-mode inspector (`DebugPanel.tsx`),
+  and the Referer-rewrite/fetch helpers (`referer.ts`). Direct-file downloads run
+  here (not the offscreen pipeline).
 - **`src/shared/`** — cross-context code: `types.ts`, the typed message channel
   `messages.ts`, the HLS parser `m3u8.ts`, and the id hash `hash.ts`.
 
@@ -71,13 +74,25 @@ loops).
 - **Single-threaded ffmpeg core** — avoids `SharedArrayBuffer` / COOP-COEP. Fine
   because we only remux (`-c copy`). If you ever add re-encoding you must revisit
   threading + cross-origin isolation.
+- **ffmpeg core must be the ESM build.** Vite bundles `@ffmpeg/ffmpeg`'s worker as
+  a *module* worker, where `importScripts` is unavailable; it falls back to
+  `import(coreURL).default`. The UMD core has no default export and fails with
+  "failed to import ffmpeg-core.js" — ship `@ffmpeg/core` `dist/esm/ffmpeg-core.js`
+  (see the note in `src/offscreen/ffmpeg.ts`).
+- **`chrome.downloads` is unavailable in offscreen documents.** The offscreen doc
+  mints the blob URL and delegates the save to the SW via `OFFSCREEN_SAVE`; the SW
+  (same extension origin) resolves the blob URL and calls `chrome.downloads`.
 - **Offscreen document isn't manifest-discoverable.** It's created at runtime, so
   it's declared as an explicit Rollup input in `vite.config.ts`
   (`input.offscreen`). If you rename/move `offscreen.html`, update both that input
   and `OFFSCREEN_PATH` in `src/background/index.ts`.
-- **Forbidden fetch headers.** `Cookie`/`User-Agent`/`Origin` can't be set on
-  `fetch`; rely on `credentials: 'include'`. Only `Referer`/`Authorization` are
-  set explicitly (see `toFetchHeaders`).
+- **Forbidden fetch headers.** `Cookie`/`User-Agent`/`Origin`/**`Referer`** can't
+  be set on `fetch` — the browser drops them. Rely on `credentials: 'include'` for
+  cookies. `toFetchHeaders` sets `Referer`/`Authorization` for the SW's *manifest*
+  fetches; the `Referer` is silently dropped but those CDNs don't check it. To set
+  `Referer` for real (hotlink-protected downloads), rewrite it at the network layer
+  with a scoped `declarativeNetRequest` session rule — `withRefererRule` in
+  `src/sidepanel/referer.ts` (needs the `declarativeNetRequest` permission).
 - **`webRequest` is observational only** in MV3 (no blocking). Detection uses
   `onBeforeSendHeaders` (capture) + `onHeadersReceived` (classify). Skip requests
   whose `initiator` is `chrome-extension://` to avoid detecting our own fetches.
