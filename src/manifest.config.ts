@@ -18,6 +18,9 @@ export default defineManifest({
   },
   permissions: [
     'webRequest',
+    // Referer is a forbidden fetch header (fetch() silently drops it), so we
+    // rewrite it with a scoped session rule to defeat CDN hotlink protection.
+    'declarativeNetRequest',
     'storage',
     'downloads',
     'offscreen',
