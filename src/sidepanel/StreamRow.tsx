@@ -181,7 +181,34 @@ export function StreamRow({
 
         {dev && (
           <details className="dev" open>
-            <summary>debug</summary>
+            <summary>
+              debug
+              <button
+                className="dev-copy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigator.clipboard.writeText(
+                    JSON.stringify(
+                      {
+                        kind: detection.kind,
+                        encryption: detection.encryption,
+                        live: detection.live,
+                        supported: detection.supported,
+                        durationSec: detection.durationSec,
+                        manifestUrl: detection.manifestUrl,
+                        pageUrl: detection.pageUrl,
+                        headers: detection.headers,
+                        variants: detection.variants,
+                      },
+                      null,
+                      2,
+                    ),
+                  );
+                }}
+              >
+                Copy info
+              </button>
+            </summary>
             <div className="dev-row">
               <span className="dev-k">kind</span>
               <span className="dev-v">{detection.kind}</span>
