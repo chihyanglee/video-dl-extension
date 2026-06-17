@@ -134,6 +134,9 @@ async function classifyAndStore(
     // A media playlist that belongs to a master we already have: skip it.
     if (existing.some((d) => d.kind === 'master' && belongsToMaster(d, manifestUrl))) return;
     const media = parseMedia(text, manifestUrl);
+    // Demuxed providers (X/Twitter) expose audio-only rendition playlists. They
+    // aren't a downloadable video on their own, so drop them from the list.
+    if (isAudioOnlyHls(manifestUrl, media)) return;
     const variant: Variant = { url: manifestUrl, bandwidth: 0 };
     detection = baseDetection(id, tabId, manifestUrl, pageUrl, pageTitle, headers, {
       kind: 'media',
@@ -142,13 +145,6 @@ async function classifyAndStore(
       encryption: media.encryption,
       live: !media.endlist,
     });
-    // Demuxed providers (X/Twitter) expose audio-only rendition playlists. When
-    // the master wasn't observed we can't pair it with video, so flag it rather
-    // than let it download as a (silent-video / audio-only) "video".
-    if (detection.supported && isAudioOnlyHls(manifestUrl, media)) {
-      detection.supported = false;
-      detection.unsupportedReason = 'Audio-only rendition';
-    }
   }
 
   const added = await addDetection(detection);
