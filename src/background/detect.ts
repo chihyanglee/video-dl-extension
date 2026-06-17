@@ -142,6 +142,13 @@ async function classifyAndStore(
       encryption: media.encryption,
       live: !media.endlist,
     });
+    // Demuxed providers (X/Twitter) expose audio-only rendition playlists. When
+    // the master wasn't observed we can't pair it with video, so flag it rather
+    // than let it download as a (silent-video / audio-only) "video".
+    if (detection.supported && isAudioOnlyHls(manifestUrl, media)) {
+      detection.supported = false;
+      detection.unsupportedReason = 'Audio-only rendition';
+    }
   }
 
   const added = await addDetection(detection);
@@ -165,6 +172,17 @@ async function classifyAndStore(
 /** True if `url` is one of the master detection's variant or audio playlists. */
 function belongsToMaster(master: Detection, url: string): boolean {
   return master.variants.some((v) => v.url === url || v.audioUrl === url);
+}
+
+/**
+ * Heuristic: is this HLS media playlist an audio-only rendition? Demuxed
+ * providers route audio under an `/aud/` or `/mp4a/` path (e.g. X/Twitter
+ * `…/pl/mp4a/128000/…` with `…/aud/mp4a/…` segments). Muxed playlists hit
+ * neither, so this won't misflag normal HLS.
+ */
+function isAudioOnlyHls(manifestUrl: string, media: MediaPlaylist): boolean {
+  const sample = `${manifestUrl} ${media.initSegment ?? ''} ${media.segments[0] ?? ''}`;
+  return /\/aud\/|\/mp4a\//i.test(sample);
 }
 
 async function probeMedia(
