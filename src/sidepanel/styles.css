@@ -79,6 +79,7 @@ header h1 { font-size: 15px; margin: 0; }
   cursor: pointer;
 }
 .dev-copy:hover { border-color: var(--accent); }
+.dev-copy.copied { color: #fff; background: #16a34a; border-color: #16a34a; }
 .dev-row { display: flex; gap: 8px; margin-top: 4px; }
 .dev-k { flex: 0 0 56px; color: var(--muted); }
 .dev-v { flex: 1; min-width: 0; color: var(--text); white-space: pre-wrap; word-break: break-all; }

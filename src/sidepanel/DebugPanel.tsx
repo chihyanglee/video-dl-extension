@@ -12,7 +12,14 @@ export function DebugPanel({ detection }: { detection: Detection }) {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [manifest, setManifest] = useState<ProbeResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const referer = detection.headers.referer ?? detection.pageUrl;
+
+  const copy = (text: string, what: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopied(what);
+    setTimeout(() => setCopied((c) => (c === what ? null : c)), 1200);
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -21,7 +28,7 @@ export function DebugPanel({ detection }: { detection: Detection }) {
   };
 
   const copyInfo = () =>
-    navigator.clipboard.writeText(
+    copy(
       JSON.stringify(
         {
           kind: detection.kind,
@@ -37,14 +44,18 @@ export function DebugPanel({ detection }: { detection: Detection }) {
         null,
         2,
       ),
+      'info',
     );
 
   return (
     <details className="dev" open>
       <summary>
         debug
-        <button className="dev-copy" onClick={(e) => { e.preventDefault(); copyInfo(); }}>
-          Copy info
+        <button
+          className={`dev-copy${copied === 'info' ? ' copied' : ''}`}
+          onClick={(e) => { e.preventDefault(); copyInfo(); }}
+        >
+          {copied === 'info' ? 'Copied ✓' : 'Copy info'}
         </button>
       </summary>
 
@@ -60,8 +71,8 @@ export function DebugPanel({ detection }: { detection: Detection }) {
         <span className="dev-k">url</span>
         <span
           className="dev-v dev-mono"
-          title="Click to copy"
-          onClick={() => navigator.clipboard.writeText(detection.manifestUrl)}
+          title={copied === 'url' ? 'Copied ✓' : 'Click to copy'}
+          onClick={() => copy(detection.manifestUrl, 'url')}
         >
           {detection.manifestUrl}
         </span>
