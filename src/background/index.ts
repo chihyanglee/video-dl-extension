@@ -94,6 +94,17 @@ onMessage(async (msg: Message, _sender) => {
         .catch(() => void 0);
       return { ok: true };
 
+    case 'OFFSCREEN_SAVE':
+      // Offscreen can't call chrome.downloads; it hands us a same-origin blob:
+      // URL to enqueue. Await so the blob is read before the offscreen doc is
+      // torn down (which would revoke it).
+      try {
+        await chrome.downloads.download({ url: msg.url, filename: msg.filename, saveAs: false });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+
     case 'JOB_PROGRESS': {
       // Offscreen broadcasts progress; the side panel receives it directly.
       // SW only watches terminal phases to tear down the offscreen document.

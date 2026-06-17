@@ -150,8 +150,18 @@ async function runJob(job: DownloadJob): Promise<void> {
 
     report(job, 'saving', { percent: 95 });
     const url = URL.createObjectURL(new Blob([mp4 as BlobPart], { type: 'video/mp4' }));
-    await chrome.downloads.download({ url, filename: job.filename, saveAs: false });
+    // Offscreen documents have no chrome.downloads API. Delegate the save to the
+    // service worker, which can resolve our same-origin blob: URL. Await it so
+    // the blob is consumed before we report 'done' (which lets the SW tear the
+    // offscreen doc down and revoke the blob).
+    const res = (await chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_SAVE',
+      jobId: job.jobId,
+      url,
+      filename: job.filename,
+    })) as { ok?: boolean; error?: string } | undefined;
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    if (!res?.ok) throw new Error(res?.error ?? 'download failed');
 
     report(job, 'done', { percent: 100 });
   } catch (e) {
