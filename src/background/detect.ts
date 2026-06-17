@@ -7,7 +7,7 @@ import {
 } from '../shared/m3u8';
 import { parseMpd } from '../shared/mpd';
 import type { CapturedHeaders, Detection, Variant } from '../shared/types';
-import { addDetection, getDetections, removeDetection } from './store';
+import { addDetection, getDetections, removeDetection, updateDetection } from './store';
 
 const HLS_CONTENT_TYPES = [
   'application/vnd.apple.mpegurl',
@@ -109,6 +109,16 @@ async function classifyAndStore(
 
   if (!text.includes('#EXTM3U')) return; // not a real playlist
 
+  // Demuxed providers (X/Twitter amplify) expose per-rendition video + audio
+  // playlists and often don't surface a master. Collapse everything sharing a
+  // video id into one detection so it's a single row with a quality picker and
+  // a muxable audio track.
+  const group = amplifyGroupId(manifestUrl);
+  if (group) {
+    await classifyGrouped(group, manifestUrl, text, tabId, pageUrl, headers);
+    return;
+  }
+
   const pageTitle = await getTabTitle(tabId);
   let detection: Detection;
   // Sub-playlists (video variants + demuxed audio) of an existing master are
@@ -168,6 +178,98 @@ async function classifyAndStore(
 /** True if `url` is one of the master detection's variant or audio playlists. */
 function belongsToMaster(master: Detection, url: string): boolean {
   return master.variants.some((v) => v.url === url || v.audioUrl === url);
+}
+
+/** Canonical group prefix for X/Twitter demuxed media, or null. */
+function amplifyGroupId(url: string): string | null {
+  const m = url.match(/^(https?:\/\/[^/]+\/(?:amplify_video|tweet_video)\/\d+)\//);
+  return m ? m[1] : null;
+}
+
+/**
+ * Merge a loose X/Twitter rendition playlist into one per-video detection.
+ * Video renditions become quality variants; the audio rendition is stored as
+ * the group's `audioUrl` (muxed in at download). A real master, if observed,
+ * overwrites the synthesized variants authoritatively.
+ */
+async function classifyGrouped(
+  group: string,
+  manifestUrl: string,
+  text: string,
+  tabId: number,
+  pageUrl: string,
+  headers: CapturedHeaders,
+): Promise<void> {
+  const gid = hashId(group);
+  const isAudio = /\/mp4a\/|\/aud\//i.test(manifestUrl);
+  const res = manifestUrl.match(/\/(\d+)x(\d+)\//);
+  const resolution = res ? `${res[1]}x${res[2]}` : undefined;
+  const height = res ? Number(res[2]) : undefined;
+
+  const existing = await getDetections(tabId);
+  const cur = existing.find((d) => d.id === gid);
+
+  // A real master is authoritative — once we have one, ignore loose subs.
+  if (cur && isMaster(text) === false && belongsToMaster(cur, manifestUrl)) return;
+
+  if (isMaster(text)) {
+    const master = parseMaster(text, manifestUrl);
+    if (!master.variants.length) return;
+    const probe = await probeMedia(master.variants[0].url, headers);
+    const det = baseDetection(gid, tabId, manifestUrl, pageUrl, await getTabTitle(tabId), headers, {
+      kind: 'master',
+      variants: master.variants,
+      durationSec: probe?.durationSec,
+      encryption: probe?.encryption ?? 'none',
+      live: probe ? !probe.endlist : false,
+    });
+    await putDetection(det, !!cur);
+    notifyDetections(tabId);
+    return;
+  }
+
+  const media = parseMedia(text, manifestUrl);
+  if (cur) {
+    const patch: Partial<Detection> = {};
+    if (isAudio) {
+      if (cur.audioUrl) return; // already have audio for this group
+      patch.audioUrl = manifestUrl;
+    } else {
+      if (cur.variants.some((v) => v.url === manifestUrl)) return; // dup variant
+      patch.variants = [...cur.variants, { url: manifestUrl, bandwidth: 0, resolution, height }].sort(
+        (a, b) => (b.height ?? 0) - (a.height ?? 0),
+      );
+      patch.supported = !cur.live && cur.encryption !== 'unsupported-drm';
+    }
+    await updateDetection(tabId, gid, patch);
+    notifyDetections(tabId);
+    return;
+  }
+
+  // First rendition seen for this group — create the detection.
+  const det = baseDetection(gid, tabId, manifestUrl, pageUrl, await getTabTitle(tabId), headers, {
+    kind: 'master',
+    variants: isAudio ? [] : [{ url: manifestUrl, bandwidth: 0, resolution, height }],
+    durationSec: media.durationSec,
+    encryption: media.encryption,
+    live: !media.endlist,
+  });
+  if (isAudio) det.audioUrl = manifestUrl;
+  // Not downloadable until at least one video variant exists.
+  det.supported = det.supported && det.variants.length > 0;
+  await putDetection(det, false);
+  notifyDetections(tabId);
+}
+
+function notifyDetections(tabId: number): void {
+  void updateBadge(tabId);
+  chrome.runtime.sendMessage({ type: 'DETECTIONS_CHANGED', tabId }).catch(() => void 0);
+}
+
+/** Add a new detection, or overwrite the existing one (master supersedes subs). */
+async function putDetection(det: Detection, replace: boolean): Promise<void> {
+  if (replace) await updateDetection(det.tabId, det.id, det);
+  else await addDetection(det);
 }
 
 /**

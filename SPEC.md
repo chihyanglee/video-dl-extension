@@ -70,10 +70,14 @@ Phase 1 (HLS) is implemented. Phase 2 adds two source types:
   and audio track from their separate media playlists, then **ffmpeg mux**
   (`-c copy`) exactly like DASH. When audio is muxed into the video segments
   (no `audioUrl`), use the single-track remux path.
-- **Dedup**: only the **master** is surfaced as a downloadable row. Per-rendition
-  media playlists (video variants + audio) that `webRequest` also observes are
-  collapsed into the master (matched by URL membership), so one X video = one row
-  instead of one row per rendition.
+- **Dedup / grouping**: all playlists sharing a video id (`amplify_video/<id>` or
+  `tweet_video/<id>`) collapse into **one** detection. If a master is observed it's
+  authoritative (its variants + audio groups). If not — common on the X timeline,
+  which fetches renditions directly — the detection is **synthesized** from the
+  loose sub-playlists: video renditions become quality variants (resolution parsed
+  from the URL) and the audio playlist is stored as the group's muxable audio. So
+  one X video = one row with a quality picker, never one row per rendition, and it
+  still downloads with sound.
 
 ### Out of phase 2 (still deferred)
 - Stream-to-disk (File System Access) for the memory ceiling.

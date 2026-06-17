@@ -40,6 +40,9 @@ export interface Detection {
   thumbnailDataUrl?: string;
   customName?: string; // user-edited base filename (no extension)
   detectedAt: number;
+  // Demuxed audio for the whole group when synthesized from loose sub-playlists
+  // (no master observed); muxed in at download. Per-variant audioUrl wins.
+  audioUrl?: string;
 }
 
 // What to download, per source type. Files are handled outside the offscreen

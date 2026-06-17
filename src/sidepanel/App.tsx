@@ -125,7 +125,7 @@ export function App() {
         : {
             type: 'hls',
             mediaPlaylistUrl: variant?.url ?? det.manifestUrl,
-            audioPlaylistUrl: variant?.audioUrl,
+            audioPlaylistUrl: variant?.audioUrl ?? det.audioUrl,
           };
     const job: DownloadJob = {
       jobId,
