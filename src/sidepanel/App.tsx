@@ -12,6 +12,64 @@ function newJobId(): string {
   return `job_${Date.now().toString(36)}_${jobSeq++}`;
 }
 
+// declarativeNetRequest session-rule id, kept in a high range to avoid clashing
+// with any static rules. One in flight per download is enough.
+let drnRuleSeq = 100000;
+
+/**
+ * Fetch `url` with `Referer` forced to `referer`. fetch() cannot set Referer
+ * (forbidden header), so we install a scoped modifyHeaders session rule for the
+ * duration of the request and remove it in `finally`. Streams the body so
+ * `onProgress(received, total)` can drive a progress bar; `total` is 0 when the
+ * server sends no Content-Length. Returns the body as a Blob; throws on non-2xx.
+ */
+async function fetchWithReferer(
+  url: string,
+  referer: string | undefined,
+  onProgress?: (received: number, total: number) => void,
+): Promise<Blob> {
+  const ruleId = ++drnRuleSeq;
+  if (referer) {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [ruleId],
+      addRules: [
+        {
+          id: ruleId,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [{ header: 'referer', operation: 'set', value: referer }],
+          },
+          condition: { urlFilter: url, resourceTypes: ['xmlhttprequest'] },
+        } as chrome.declarativeNetRequest.Rule,
+      ],
+    });
+  }
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const total = Number(res.headers.get('content-length')) || 0;
+    if (!res.body) return await res.blob(); // no stream available; can't track
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      onProgress?.(received, total);
+    }
+    return new Blob(chunks as BlobPart[], {
+      type: res.headers.get('content-type') ?? 'application/octet-stream',
+    });
+  } finally {
+    if (referer) {
+      await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+    }
+  }
+}
+
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [detections, setDetections] = useState<Detection[]>([]);
@@ -61,18 +119,57 @@ export function App() {
 
   const onDownload = useCallback((det: Detection, variant: Variant) => {
     const baseName = sanitizeFilename(det.customName ?? det.pageTitle);
-    // Direct files bypass the ffmpeg pipeline — just hand the URL to the
-    // browser's download manager (rides cookies, no remux needed).
+    // Direct files bypass the ffmpeg pipeline. We must fetch them ourselves
+    // rather than hand the URL to chrome.downloads: many CDNs gate the file
+    // behind a Referer check (hotlink protection), and the download manager
+    // doesn't send the page Referer — it would save the 403 error page as a
+    // broken .mp4. We fetch from this extension context (rides cookies via
+    // credentials:'include') and download the resulting blob. Referer is a
+    // forbidden fetch header (fetch() drops it), so we set it with a scoped,
+    // self-removing declarativeNetRequest session rule wrapping the fetch.
     if (det.kind === 'file') {
       const ext = (det.manifestUrl.match(/\.(mp4|webm|mov|m4v|ogv|ogg)/i)?.[1] ?? 'mp4').toLowerCase();
-      chrome.downloads.download({
-        url: det.manifestUrl,
-        filename: `${baseName}.${ext}`,
-      });
+      const jobId = newJobId();
       setProgressByDetection((prev) => ({
         ...prev,
-        [det.id]: { jobId: newJobId(), detectionId: det.id, phase: 'done', percent: 100 },
+        [det.id]: { jobId, detectionId: det.id, phase: 'saving' },
       }));
+      const referer = det.headers.referer ?? det.pageUrl;
+      void (async () => {
+        let url: string | undefined;
+        try {
+          const blob = await fetchWithReferer(det.manifestUrl, referer, (received, total) => {
+            setProgressByDetection((prev) => ({
+              ...prev,
+              [det.id]: {
+                jobId,
+                detectionId: det.id,
+                phase: 'saving',
+                fetched: received,
+                total: total || undefined,
+                percent: total ? Math.round((received / total) * 100) : undefined,
+              },
+            }));
+          });
+          url = URL.createObjectURL(blob);
+          await chrome.downloads.download({ url, filename: `${baseName}.${ext}` });
+          setProgressByDetection((prev) => ({
+            ...prev,
+            [det.id]: { jobId, detectionId: det.id, phase: 'done', percent: 100 },
+          }));
+        } catch (e) {
+          setProgressByDetection((prev) => ({
+            ...prev,
+            [det.id]: { jobId, detectionId: det.id, phase: 'error', error: String(e) },
+          }));
+        } finally {
+          // Revoke after the download manager has read the blob.
+          if (url) {
+            const u = url;
+            setTimeout(() => URL.revokeObjectURL(u), 60_000);
+          }
+        }
+      })();
       return;
     }
 
