@@ -84,6 +84,30 @@ header h1 { font-size: 15px; margin: 0; }
 .dev-v { flex: 1; min-width: 0; color: var(--text); white-space: pre-wrap; word-break: break-all; }
 .dev-mono { white-space: pre-wrap; }
 .dev-v[title] { cursor: copy; }
+.dev-actions { display: flex; gap: 6px; margin-top: 6px; }
+.dev-actions button {
+  font: inherit;
+  padding: 3px 10px;
+  color: var(--text);
+  background: #1f2430;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.dev-actions button:hover:not(:disabled) { border-color: var(--accent); }
+.dev-actions button:disabled { opacity: 0.5; cursor: default; }
+.dev-manifest {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 200px;
+  overflow: auto;
+  background: #0b0d12;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+}
 
 .empty { color: var(--muted); font-size: 12px; }
 

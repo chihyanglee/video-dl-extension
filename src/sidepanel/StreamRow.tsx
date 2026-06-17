@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Detection, JobProgress, Variant } from '../shared/types';
 import { HoverPreview } from './HoverPreview';
 import { thumbnailFor } from './thumbnail';
+import { probe, fetchText, type ProbeResult } from './referer';
 
 interface Props {
   detection: Detection;
@@ -60,6 +61,9 @@ export function StreamRow({
   const [name, setName] = useState(() => defaultName(detection));
   const jobIdRef = useRef<string | undefined>(progress?.jobId);
   if (progress?.jobId) jobIdRef.current = progress.jobId;
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
+  const [manifest, setManifest] = useState<ProbeResult | null>(null);
+  const [devBusy, setDevBusy] = useState(false);
 
   useEffect(() => {
     if (thumb || !detection.supported) return;
@@ -241,6 +245,51 @@ export function StreamRow({
                   .join('\n')}
               </span>
             </div>
+            <div className="dev-row">
+              <span className="dev-k">id</span>
+              <span className="dev-v dev-mono">{detection.id}</span>
+            </div>
+
+            <div className="dev-actions">
+              <button
+                disabled={devBusy}
+                onClick={async () => {
+                  setDevBusy(true);
+                  setProbeResult(await probe(detection.manifestUrl, detection.headers.referer ?? detection.pageUrl));
+                  setDevBusy(false);
+                }}
+              >
+                Probe
+              </button>
+              <button
+                disabled={devBusy}
+                onClick={async () => {
+                  setDevBusy(true);
+                  setManifest(await fetchText(detection.manifestUrl, detection.headers.referer ?? detection.pageUrl));
+                  setDevBusy(false);
+                }}
+              >
+                View manifest
+              </button>
+            </div>
+
+            {probeResult && (
+              <div className="dev-row">
+                <span className="dev-k">probe</span>
+                <span className="dev-v dev-mono">
+                  {probeResult.error
+                    ? `error: ${probeResult.error}`
+                    : `HTTP ${probeResult.status} · ${probeResult.contentType || '(no content-type)'}`}
+                </span>
+              </div>
+            )}
+            {manifest && (
+              <pre className="dev-manifest">
+                {manifest.error
+                  ? `error: ${manifest.error}`
+                  : `HTTP ${manifest.status} · ${manifest.contentType}\n\n${manifest.text ?? ''}`}
+              </pre>
+            )}
           </details>
         )}
       </div>

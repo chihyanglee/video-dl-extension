@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Message } from '../shared/messages';
 import type { Detection, DownloadJob, JobProgress, Variant } from '../shared/types';
 import { StreamRow } from './StreamRow';
+import { fetchWithReferer } from './referer';
 
 function sanitizeFilename(name: string): string {
   return (name || 'video').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -10,64 +11,6 @@ function sanitizeFilename(name: string): string {
 let jobSeq = 0;
 function newJobId(): string {
   return `job_${Date.now().toString(36)}_${jobSeq++}`;
-}
-
-// declarativeNetRequest session-rule id, kept in a high range to avoid clashing
-// with any static rules. One in flight per download is enough.
-let drnRuleSeq = 100000;
-
-/**
- * Fetch `url` with `Referer` forced to `referer`. fetch() cannot set Referer
- * (forbidden header), so we install a scoped modifyHeaders session rule for the
- * duration of the request and remove it in `finally`. Streams the body so
- * `onProgress(received, total)` can drive a progress bar; `total` is 0 when the
- * server sends no Content-Length. Returns the body as a Blob; throws on non-2xx.
- */
-async function fetchWithReferer(
-  url: string,
-  referer: string | undefined,
-  onProgress?: (received: number, total: number) => void,
-): Promise<Blob> {
-  const ruleId = ++drnRuleSeq;
-  if (referer) {
-    await chrome.declarativeNetRequest.updateSessionRules({
-      removeRuleIds: [ruleId],
-      addRules: [
-        {
-          id: ruleId,
-          priority: 1,
-          action: {
-            type: 'modifyHeaders',
-            requestHeaders: [{ header: 'referer', operation: 'set', value: referer }],
-          },
-          condition: { urlFilter: url, resourceTypes: ['xmlhttprequest'] },
-        } as chrome.declarativeNetRequest.Rule,
-      ],
-    });
-  }
-  try {
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const total = Number(res.headers.get('content-length')) || 0;
-    if (!res.body) return await res.blob(); // no stream available; can't track
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-      onProgress?.(received, total);
-    }
-    return new Blob(chunks as BlobPart[], {
-      type: res.headers.get('content-type') ?? 'application/octet-stream',
-    });
-  } finally {
-    if (referer) {
-      await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
-    }
-  }
 }
 
 export function App() {
