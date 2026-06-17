@@ -3,6 +3,11 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 // Single-threaded core is shipped as extension-origin assets under public/
 // (MV3 CSP forbids loading wasm/JS from a remote CDN). Single-thread core needs
 // no SharedArrayBuffer / COOP-COEP. Resolved at runtime via getURL.
+// IMPORTANT: ffmpeg-core.js must be the **ESM** build (@ffmpeg/core dist/esm,
+// `export default createFFmpegCore`). Vite bundles @ffmpeg/ffmpeg's worker as a
+// module worker where importScripts is unavailable, so it falls back to
+// `import(coreURL).default`; the UMD build has no default export and fails with
+// "failed to import ffmpeg-core.js".
 const coreURL = chrome.runtime.getURL('ffmpeg-core/ffmpeg-core.js');
 const wasmURL = chrome.runtime.getURL('ffmpeg-core/ffmpeg-core.wasm');
 
