@@ -92,18 +92,47 @@ header h1 { font-size: 15px; margin: 0; }
   color: #9ec5ff;
 }
 
-.actions { display: flex; gap: 6px; align-items: center; }
+.actions { display: flex; gap: 8px; align-items: center; }
+
+/* Shared control base */
 select, button {
   font: inherit;
   background: #1f2430;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 5px 9px;
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-button.dl { background: var(--accent); border-color: var(--accent); }
-button.dl:hover { filter: brightness(1.1); }
+
+/* Quality selector: fills available width, custom caret (no bulky native UI) */
+.actions select {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b93a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.actions select:hover { border-color: #39414f; }
+.actions select:focus-visible { outline: none; border-color: var(--accent); }
+
+/* Primary action: one refined CTA, compact and right-aligned */
+.actions .dl {
+  flex: 0 0 auto;
+  font-weight: 600;
+  padding: 5px 14px;
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.actions .dl:hover { background: #3b82f6; border-color: #3b82f6; }
+.actions .dl:active { background: #1d4ed8; border-color: #1d4ed8; }
+.actions .dl:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
 
 .progress { display: flex; align-items: center; gap: 8px; }
 .bar { flex: 1; height: 6px; background: #1f2430; border-radius: 3px; overflow: hidden; }
