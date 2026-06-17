@@ -7,7 +7,7 @@ import {
 } from '../shared/m3u8';
 import { parseMpd } from '../shared/mpd';
 import type { CapturedHeaders, Detection, Variant } from '../shared/types';
-import { addDetection, getDetections } from './store';
+import { addDetection, getDetections, removeDetection } from './store';
 
 const HLS_CONTENT_TYPES = [
   'application/vnd.apple.mpegurl',
@@ -111,6 +111,9 @@ async function classifyAndStore(
 
   const pageTitle = await getTabTitle(tabId);
   let detection: Detection;
+  // Sub-playlists (video variants + demuxed audio) of an existing master are
+  // collapsed into it — one X video = one row, not one per rendition.
+  let subPlaylistUrls: Set<string> | undefined;
 
   if (isMaster(text)) {
     const master = parseMaster(text, manifestUrl);
@@ -124,7 +127,12 @@ async function classifyAndStore(
       encryption: probe?.encryption ?? 'none',
       live: probe ? !probe.endlist : false,
     });
+    subPlaylistUrls = new Set(
+      master.variants.flatMap((v) => [v.url, v.audioUrl].filter((u): u is string => !!u)),
+    );
   } else {
+    // A media playlist that belongs to a master we already have: skip it.
+    if (existing.some((d) => d.kind === 'master' && belongsToMaster(d, manifestUrl))) return;
     const media = parseMedia(text, manifestUrl);
     const variant: Variant = { url: manifestUrl, bandwidth: 0 };
     detection = baseDetection(id, tabId, manifestUrl, pageUrl, pageTitle, headers, {
@@ -138,11 +146,25 @@ async function classifyAndStore(
 
   const added = await addDetection(detection);
   if (added) {
+    // If this is a master, drop any media detections already stored for its
+    // sub-playlists (they may have been observed before the master).
+    if (subPlaylistUrls) {
+      for (const d of existing) {
+        if (d.kind === 'media' && subPlaylistUrls.has(d.manifestUrl)) {
+          await removeDetection(tabId, d.id);
+        }
+      }
+    }
     await updateBadge(tabId);
     chrome.runtime
       .sendMessage({ type: 'DETECTIONS_CHANGED', tabId })
       .catch(() => void 0); // side panel may be closed
   }
+}
+
+/** True if `url` is one of the master detection's variant or audio playlists. */
+function belongsToMaster(master: Detection, url: string): boolean {
+  return master.variants.some((v) => v.url === url || v.audioUrl === url);
 }
 
 async function probeMedia(

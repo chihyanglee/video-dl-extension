@@ -47,8 +47,39 @@ export interface MediaPlaylist {
   mediaSequence: number; // #EXT-X-MEDIA-SEQUENCE (default 0); used for default IV
 }
 
+/** An #EXT-X-MEDIA:TYPE=AUDIO rendition (demuxed audio group member). */
+interface AudioRendition {
+  groupId: string;
+  uri: string; // absolute media-playlist URL
+  isDefault: boolean;
+}
+
+/** Pick the audio media-playlist URL for a STREAM-INF's AUDIO group. */
+function audioForGroup(audio: AudioRendition[], groupId?: string): string | undefined {
+  if (!groupId) return undefined;
+  const inGroup = audio.filter((a) => a.groupId === groupId && a.uri);
+  if (!inGroup.length) return undefined;
+  return (inGroup.find((a) => a.isDefault) ?? inGroup[0]).uri;
+}
+
 export function parseMaster(text: string, baseUrl: string): MasterPlaylist {
   const lines = text.split(/\r?\n/);
+
+  // Pass 1: collect demuxed audio renditions.
+  const audio: AudioRendition[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith('#EXT-X-MEDIA')) continue;
+    const attrs = parseAttributes(line.slice(line.indexOf(':') + 1));
+    if (attrs['TYPE'] !== 'AUDIO' || !attrs['URI']) continue;
+    audio.push({
+      groupId: attrs['GROUP-ID'] ?? '',
+      uri: resolveUrl(baseUrl, attrs['URI']),
+      isDefault: attrs['DEFAULT'] === 'YES',
+    });
+  }
+
+  // Pass 2: video variants, each mapped to its audio group (if demuxed).
   const variants: Variant[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -72,6 +103,7 @@ export function parseMaster(text: string, baseUrl: string): MasterPlaylist {
       resolution,
       codecs: attrs['CODECS'],
       height: Number.isFinite(height) ? height : undefined,
+      audioUrl: audioForGroup(audio, attrs['AUDIO']),
     });
   }
   // Highest bandwidth first.

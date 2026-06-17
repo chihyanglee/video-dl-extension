@@ -58,6 +58,23 @@ Phase 1 (HLS) is implemented. Phase 2 adds two source types:
   **ffmpeg mux**: `ffmpeg -i video -i audio -c copy out.mp4`.
 - A DASH `Detection` has `kind: 'dash'`; `variants` = video Representations.
 
+### HLS with alternate (demuxed) audio
+- Some providers (e.g. X/Twitter `amplify_video`) serve **demuxed** HLS: the
+  master lists video-only `#EXT-X-STREAM-INF` variants plus a separate audio
+  rendition group via `#EXT-X-MEDIA:TYPE=AUDIO`. The video media playlists carry
+  **no audio**; audio lives in its own media playlist.
+- **Parse** the master's `#EXT-X-MEDIA:TYPE=AUDIO` renditions and map each video
+  variant to its audio group (`AUDIO="<group-id>"`, preferring `DEFAULT=YES`).
+  Each `Variant` carries the resolved `audioUrl` when audio is demuxed.
+- **Download** (offscreen): when a variant has `audioUrl`, build the video track
+  and audio track from their separate media playlists, then **ffmpeg mux**
+  (`-c copy`) exactly like DASH. When audio is muxed into the video segments
+  (no `audioUrl`), use the single-track remux path.
+- **Dedup**: only the **master** is surfaced as a downloadable row. Per-rendition
+  media playlists (video variants + audio) that `webRequest` also observes are
+  collapsed into the master (matched by URL membership), so one X video = one row
+  instead of one row per rendition.
+
 ### Out of phase 2 (still deferred)
 - Stream-to-disk (File System Access) for the memory ceiling.
 - Native companion app.

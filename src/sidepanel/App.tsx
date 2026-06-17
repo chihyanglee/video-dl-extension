@@ -122,7 +122,11 @@ export function App() {
     const source: DownloadJob['source'] =
       det.kind === 'dash'
         ? { type: 'dash', mpdUrl: det.manifestUrl, videoRepId: variant?.repId ?? det.variants[0]?.repId ?? '' }
-        : { type: 'hls', mediaPlaylistUrl: variant?.url ?? det.manifestUrl };
+        : {
+            type: 'hls',
+            mediaPlaylistUrl: variant?.url ?? det.manifestUrl,
+            audioPlaylistUrl: variant?.audioUrl,
+          };
     const job: DownloadJob = {
       jobId,
       detectionId: det.id,

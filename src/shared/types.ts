@@ -17,6 +17,7 @@ export interface Variant {
   codecs?: string;
   height?: number; // parsed from resolution, for sorting/labels
   repId?: string; // DASH Representation id (used to resolve segments at download)
+  audioUrl?: string; // HLS demuxed audio: absolute media-playlist URL to mux in
 }
 
 export type DetectionKind = 'master' | 'media' | 'dash' | 'file';
@@ -44,7 +45,7 @@ export interface Detection {
 // What to download, per source type. Files are handled outside the offscreen
 // pipeline (direct chrome.downloads), so only HLS + DASH appear here.
 export type JobSource =
-  | { type: 'hls'; mediaPlaylistUrl: string }
+  | { type: 'hls'; mediaPlaylistUrl: string; audioPlaylistUrl?: string }
   | { type: 'dash'; mpdUrl: string; videoRepId: string };
 
 export interface DownloadJob {
