@@ -436,7 +436,23 @@ export function toFetchHeaders(h: CapturedHeaders): Record<string, string> {
   return out;
 }
 
+// Detection can be paused from the side panel; persisted so it survives SW
+// restarts. The classifier early-returns while paused.
+let paused = false;
+export const PAUSE_KEY = 'detectPaused';
+
+function watchPaused(): void {
+  void chrome.storage.local.get(PAUSE_KEY).then((r) => {
+    paused = !!r[PAUSE_KEY];
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[PAUSE_KEY]) paused = !!changes[PAUSE_KEY].newValue;
+  });
+}
+
 export function registerDetection(): void {
+  watchPaused();
+
   chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
       if (details.tabId < 0) return; // not a tab (e.g. our own fetch)
@@ -448,6 +464,7 @@ export function registerDetection(): void {
 
   chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
+      if (paused) return;
       if (details.tabId < 0) return;
       if (details.initiator?.startsWith('chrome-extension://')) return; // our fetch
 

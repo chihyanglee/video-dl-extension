@@ -16,6 +16,7 @@ function newJobId(): string {
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [dev, setDev] = useState<boolean>(() => localStorage.getItem('dev') === '1');
+  const [paused, setPaused] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [progressByDetection, setProgressByDetection] = useState<Record<string, JobProgress>>({});
   const jobToDetection = useRef<Record<string, string>>({});
@@ -36,6 +37,16 @@ export function App() {
       }
     });
   }, [refresh]);
+
+  // Detection pause flag is persisted in storage.local (read by the SW).
+  useEffect(() => {
+    void chrome.storage.local.get('detectPaused').then((r) => setPaused(!!r.detectPaused));
+    const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && changes.detectPaused) setPaused(!!changes.detectPaused.newValue);
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+  }, []);
 
   // React to detection changes + job progress broadcasts.
   useEffect(() => {
@@ -179,6 +190,28 @@ export function App() {
         <h1>Video DL</h1>
         <div className="head-right">
           <span className="count">{supported.length} found</span>
+          <button
+            className={`refresh${paused ? ' on' : ''}`}
+            title={paused ? 'Detection paused — click to resume' : 'Pause detection'}
+            aria-label={paused ? 'Resume detection' : 'Pause detection'}
+            aria-pressed={paused}
+            onClick={() => {
+              const next = !paused;
+              setPaused(next);
+              void chrome.storage.local.set({ detectPaused: next });
+            }}
+          >
+            {paused ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="5" width="4" height="14" rx="1" />
+                <rect x="14" y="5" width="4" height="14" rx="1" />
+              </svg>
+            )}
+          </button>
           <button
             className={`devtoggle${dev ? ' on' : ''}`}
             title="Toggle debug info"
