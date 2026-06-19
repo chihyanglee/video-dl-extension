@@ -170,13 +170,22 @@ export function StreamRow({
                 ))}
               </select>
             )}
-            <button className="dl" onClick={() => onDownload(detection, variant)}>
-              {progress?.phase === 'done'
-                ? 'Download again'
-                : detection.kind === 'file'
-                  ? 'Download'
-                  : 'Download MP4'}
-            </button>
+            {progress?.phase === 'done' ? (
+              <>
+                <span className="saved" role="status">✓ Saved</span>
+                <button
+                  className="dl dl--secondary"
+                  title="Download again"
+                  onClick={() => onDownload(detection, variant)}
+                >
+                  Again
+                </button>
+              </>
+            ) : (
+              <button className="dl" onClick={() => onDownload(detection, variant)}>
+                {detection.kind === 'file' ? 'Download' : 'Download MP4'}
+              </button>
+            )}
             {progress?.phase === 'error' && <span className="err">{progress.error}</span>}
           </div>
         )}

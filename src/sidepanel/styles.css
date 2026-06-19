@@ -6,10 +6,12 @@
   --border-strong: #39414f;
   --text: #e6e9ef;
   --muted: #98a1b3; /* ≥4.5:1 on --panel */
-  --accent: #2563eb;
-  --accent-hover: #3b82f6;
-  --accent-active: #1d4ed8;
-  --ok: #16a34a;
+  --accent: #f59e0b; /* amber — action/brand (not the generic AI blue) */
+  --accent-hover: #fbbf24;
+  --accent-active: #d97706;
+  --on-accent: #1c1403; /* dark text: amber is too bright for white (fails 4.5:1) */
+  --ok: #16a34a; /* green stays the success signal regardless of brand */
+  --ok-fg: #4ade80; /* lighter green for text/chips on dark */
   --danger: #ef4444;
 }
 
@@ -73,7 +75,7 @@ header h1 { font-size: 15px; margin: 0; }
   transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
 .devtoggle:hover { color: var(--text); }
-.devtoggle.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.devtoggle.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 
 /* Dev debug block */
 .dev {
@@ -144,7 +146,7 @@ header h1 { font-size: 15px; margin: 0; }
 /* The download in progress stands out and (with active-first sort) stays on top. */
 .row--active {
   border-left-color: var(--accent);
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.1), transparent 40%), var(--panel);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.1), transparent 40%), var(--panel);
 }
 
 .thumb {
@@ -194,8 +196,9 @@ header h1 { font-size: 15px; margin: 0; }
   letter-spacing: 0.04em;
   padding: 1px 5px;
   border-radius: 4px;
-  background: #233047;
-  color: #9ec5ff;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
 }
 
 .actions { display: flex; gap: 8px; align-items: center; }
@@ -232,13 +235,35 @@ select, button {
   flex: 0 0 auto;
   font-weight: 600;
   padding: 5px 14px;
-  color: #fff;
+  color: var(--on-accent); /* dark text — amber is too bright for white */
   background: var(--accent);
   border-color: var(--accent);
 }
 .actions .dl:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .actions .dl:active { background: var(--accent-active); border-color: var(--accent-active); }
-.actions .dl:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+.actions .dl:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+
+/* Done: a clear green success chip + a quiet re-download (not a near-identical CTA) */
+.saved {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 9px;
+  color: var(--ok-fg);
+  background: rgba(22, 163, 74, 0.14);
+  border: 1px solid rgba(22, 163, 74, 0.4);
+  border-radius: 6px;
+}
+.actions .dl--secondary {
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.actions .dl--secondary:hover { color: var(--text); background: var(--surface-2); border-color: var(--accent); }
 
 .progress { display: flex; align-items: center; gap: 8px; }
 .bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
