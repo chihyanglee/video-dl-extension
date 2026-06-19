@@ -212,3 +212,8 @@ chrome.runtime.onMessage.addListener((msg) => {
     controllers.get(msg.jobId)?.abort();
   }
 });
+
+// Tell the SW we're listening — it withholds OFFSCREEN_START until this lands,
+// otherwise a job sent right after createDocument() can arrive before this
+// module has evaluated and be dropped.
+chrome.runtime.sendMessage({ type: 'OFFSCREEN_READY' }).catch(() => void 0);

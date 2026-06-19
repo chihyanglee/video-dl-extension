@@ -15,6 +15,7 @@ export type Message =
   | { type: 'OFFSCREEN_CANCEL'; jobId: string }
   // offscreen -> background (offscreen has no chrome.downloads API)
   | { type: 'OFFSCREEN_SAVE'; jobId: string; url: string; filename: string }
+  | { type: 'OFFSCREEN_READY' }
   // offscreen -> background -> sidepanel
   | { type: 'JOB_PROGRESS'; progress: JobProgress }
   // background -> sidepanel (push on detection change)
