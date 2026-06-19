@@ -12,7 +12,11 @@ row when done.
 | 001 | Establish a runnable test suite (vitest) for the pure parsers/crypto | P1 | M | — | DONE (22 tests; branch `advisor/001-test-suite`) |
 | 002 | Serialize detection writes to fix the concurrent read-modify-write race | P1 | M | 001 | DONE (branch `advisor/002-serialize-detection-writes`) |
 | 003 | Fix the offscreen-document START race (ready handshake) | P1 | S–M | — | DONE (branch `advisor/003-offscreen-start-handshake`) |
-| 004 | Add CI (GitHub Actions): typecheck + build + test on push/PR | P2 | S | 001 | DONE (branch `advisor/004-ci`) — see merge note |
+| 004 | Add CI (GitHub Actions): typecheck + build + test on push/PR | P2 | S | 001 | DONE (merged to main) |
+| 005 | Serialize download jobs so concurrent downloads don't corrupt each other | P2 | S–M | — | TODO |
+| 006 | Stop capturing/persisting session cookies (least privilege) | P3 | S | — | TODO |
+
+> 001–004 merged to `main` (merge commits `a9c1e5a`, `a7f6bae`, `98d486c`, `5157f9d`); 23 tests pass, CI added.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 
