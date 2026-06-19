@@ -26,20 +26,43 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 const OFFSCREEN_PATH = 'src/offscreen/offscreen.html';
 let creating: Promise<void> | null = null;
 
+// createDocument() resolves when the doc exists, not when its module has
+// evaluated and registered its onMessage listener. Wait for an explicit
+// OFFSCREEN_READY before sending the job, or the START can be dropped.
+let offscreenReady = false;
+let resolveReady: (() => void) | null = null;
+
+function waitForOffscreenReady(timeoutMs = 3000): Promise<void> {
+  if (offscreenReady) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    resolveReady = resolve;
+    setTimeout(() => {
+      // Fail open: if READY never arrives, proceed rather than hang.
+      resolveReady = null;
+      resolve();
+    }, timeoutMs);
+  });
+}
+
 async function ensureOffscreen(): Promise<void> {
-  const has = await chrome.offscreen.hasDocument();
-  if (has) return;
-  if (creating) return creating;
-  creating = chrome.offscreen
-    .createDocument({
-      url: OFFSCREEN_PATH,
-      reasons: [chrome.offscreen.Reason.WORKERS, chrome.offscreen.Reason.BLOBS],
-      justification: 'Fetch HLS segments and remux to MP4 with ffmpeg.wasm.',
-    })
-    .finally(() => {
-      creating = null;
-    });
-  return creating;
+  if (await chrome.offscreen.hasDocument()) {
+    offscreenReady = true; // already loaded in a prior SW lifetime
+    return;
+  }
+  offscreenReady = false;
+  if (!creating) {
+    creating = chrome.offscreen
+      .createDocument({
+        url: OFFSCREEN_PATH,
+        reasons: [chrome.offscreen.Reason.WORKERS, chrome.offscreen.Reason.BLOBS],
+        justification: 'Fetch HLS segments and remux to MP4 with ffmpeg.wasm.',
+      })
+      .finally(() => {
+        creating = null;
+      });
+  }
+  await creating;
+  await waitForOffscreenReady();
 }
 
 // Track active jobs so we can tear down the offscreen doc when idle.
@@ -49,6 +72,7 @@ async function maybeCloseOffscreen(): Promise<void> {
   if (activeJobs.size > 0) return;
   if (await chrome.offscreen.hasDocument()) {
     await chrome.offscreen.closeDocument().catch(() => void 0);
+    offscreenReady = false;
   }
 }
 
@@ -91,6 +115,12 @@ onMessage(async (msg: Message, _sender) => {
       await ensureOffscreen();
       // Forward to offscreen (it listens on the same runtime channel).
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_START', job: msg.job }).catch(() => void 0);
+      return { ok: true };
+
+    case 'OFFSCREEN_READY':
+      offscreenReady = true;
+      resolveReady?.();
+      resolveReady = null;
       return { ok: true };
 
     case 'CANCEL_DOWNLOAD':
