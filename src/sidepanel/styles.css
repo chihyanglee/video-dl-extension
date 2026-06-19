@@ -1,14 +1,31 @@
 :root {
   --bg: #0f1115;
   --panel: #171a21;
-  --border: #262b36;
+  --surface-2: #1f2430; /* inputs, buttons, hover fills */
+  --border: #2b313d; /* slightly lifted so dividers read on dark */
+  --border-strong: #39414f;
   --text: #e6e9ef;
-  --muted: #8b93a3;
+  --muted: #98a1b3; /* ≥4.5:1 on --panel */
   --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --accent-active: #1d4ed8;
+  --ok: #16a34a;
   --danger: #ef4444;
 }
 
 * { box-sizing: border-box; }
+
+/* Keyboard focus is visible on every control (was only on a few). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* Respect reduced-motion: no transitions/animations when the OS asks. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
 
 body {
   margin: 0;
@@ -40,7 +57,7 @@ header h1 { font-size: 15px; margin: 0; }
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
-.refresh:hover:not(:disabled) { color: var(--text); background: #1f2430; border-color: var(--border); }
+.refresh:hover:not(:disabled) { color: var(--text); background: var(--surface-2); border-color: var(--border); }
 .refresh:active:not(:disabled) svg { transform: rotate(-90deg); transition: transform 0.2s ease; }
 .refresh:disabled { opacity: 0.4; cursor: default; }
 .refresh svg { display: block; }
@@ -73,13 +90,13 @@ header h1 { font-size: 15px; margin: 0; }
   margin-left: auto;
   padding: 2px 8px;
   color: var(--text);
-  background: #1f2430;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
 }
 .dev-copy:hover { border-color: var(--accent); }
-.dev-copy.copied { color: #fff; background: #16a34a; border-color: #16a34a; }
+.dev-copy.copied { color: #fff; background: var(--ok); border-color: var(--ok); }
 .dev-row { display: flex; gap: 8px; margin-top: 4px; }
 .dev-k { flex: 0 0 56px; color: var(--muted); }
 .dev-v { flex: 1; min-width: 0; color: var(--text); white-space: pre-wrap; word-break: break-all; }
@@ -90,7 +107,7 @@ header h1 { font-size: 15px; margin: 0; }
   font: inherit;
   padding: 3px 10px;
   color: var(--text);
-  background: #1f2430;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
@@ -119,9 +136,16 @@ header h1 { font-size: 15px; margin: 0; }
   margin-bottom: 8px;
   background: var(--panel);
   border: 1px solid var(--border);
+  border-left: 3px solid transparent; /* reserved so active state doesn't shift layout */
   border-radius: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .row--disabled { opacity: 0.55; }
+/* The download in progress stands out and (with active-first sort) stays on top. */
+.row--active {
+  border-left-color: var(--accent);
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.1), transparent 40%), var(--panel);
+}
 
 .thumb {
   width: 120px;
@@ -151,7 +175,7 @@ header h1 { font-size: 15px; margin: 0; }
   color: var(--text);
 }
 .name:hover { border-color: var(--border); }
-.name:focus { border-color: var(--accent); background: #1f2430; outline: none; }
+.name:focus { border-color: var(--accent); background: var(--surface-2); outline: none; }
 .ext { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
 .dismiss {
   flex: 0 0 auto;
@@ -162,7 +186,7 @@ header h1 { font-size: 15px; margin: 0; }
   border: 1px solid transparent;
 }
 .dismiss:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
-.sub { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.sub { color: var(--muted); font-size: 11px; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
 .kind {
   display: inline-block;
   font-size: 10px;
@@ -179,7 +203,7 @@ header h1 { font-size: 15px; margin: 0; }
 /* Shared control base */
 select, button {
   font: inherit;
-  background: #1f2430;
+  background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -200,7 +224,7 @@ select, button {
   background-repeat: no-repeat;
   background-position: right 8px center;
 }
-.actions select:hover { border-color: #39414f; }
+.actions select:hover { border-color: var(--border-strong); }
 .actions select:focus-visible { outline: none; border-color: var(--accent); }
 
 /* Primary action: one refined CTA, compact and right-aligned */
@@ -212,14 +236,14 @@ select, button {
   background: var(--accent);
   border-color: var(--accent);
 }
-.actions .dl:hover { background: #3b82f6; border-color: #3b82f6; }
-.actions .dl:active { background: #1d4ed8; border-color: #1d4ed8; }
+.actions .dl:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.actions .dl:active { background: var(--accent-active); border-color: var(--accent-active); }
 .actions .dl:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
 
 .progress { display: flex; align-items: center; gap: 8px; }
-.bar { flex: 1; height: 6px; background: #1f2430; border-radius: 3px; overflow: hidden; }
+.bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
 .bar-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
-.phase { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.phase { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .badge { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
 .badge--off { background: #3a1f1f; color: #f3b1b1; }

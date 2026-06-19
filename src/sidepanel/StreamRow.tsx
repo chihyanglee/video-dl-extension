@@ -99,7 +99,7 @@ export function StreamRow({
 
   return (
     <div
-      className={`row${detection.supported ? '' : ' row--disabled'}`}
+      className={`row${detection.supported ? '' : ' row--disabled'}${active ? ' row--active' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -155,6 +155,7 @@ export function StreamRow({
               {progress?.phase === 'segments' && progress.total
                 ? ` ${progress.fetched}/${progress.total}`
                 : ''}
+              {progress?.percent != null ? ` · ${progress.percent}%` : ''}
             </span>
             <button onClick={() => jobIdRef.current && onCancel(jobIdRef.current)}>✕</button>
           </div>
