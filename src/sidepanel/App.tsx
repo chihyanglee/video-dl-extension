@@ -179,10 +179,18 @@ export function App() {
     [tabId],
   );
 
-  // Newest first within each group (storage appends in detection order).
-  const byNewest = (a: Detection, b: Detection) => b.detectedAt - a.detectedAt;
-  const supported = detections.filter((d) => d.supported).sort(byNewest);
-  const unsupported = detections.filter((d) => !d.supported).sort(byNewest);
+  // An in-progress download stays pinned to the top, then newest first — so a
+  // live download isn't pushed off-screen as new detections stream in (e.g.
+  // scrolling an X timeline keeps surfacing fresh videos).
+  const TERMINAL = new Set(['done', 'error', 'cancelled']);
+  const isActive = (d: Detection): boolean => {
+    const p = progressByDetection[d.id];
+    return !!p && !TERMINAL.has(p.phase);
+  };
+  const order = (a: Detection, b: Detection) =>
+    Number(isActive(b)) - Number(isActive(a)) || b.detectedAt - a.detectedAt;
+  const supported = detections.filter((d) => d.supported).sort(order);
+  const unsupported = detections.filter((d) => !d.supported).sort(order);
 
   return (
     <div className="app">
