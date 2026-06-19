@@ -187,6 +187,14 @@ cross-origin-isolation (COOP/COEP) setup. CPU is light because we only remux.
   `<video src=segment>` approach would taint and throw).
 - Thumbnail: seek to first keyframe (~0s, fallback ~10%), draw to `<canvas>`,
   export JPEG dataURL, cache.
+- **DASH** has no dash.js, but still gets a thumbnail via **manual MSE**: parse the
+  MPD, pick the smallest video Representation (fastest to fetch), fetch its init +
+  first media segment ourselves, `appendBuffer` both into a `SourceBuffer`, seek,
+  and capture. Feeding the bytes through MSE keeps the `<video>` same-origin (a
+  `blob:` `MediaSource` URL) so the canvas isn't tainted — same trick hls.js uses.
+  Best-effort: a cross-origin segment CDN without CORS, or an unsupported codec
+  (`MediaSource.isTypeSupported`), falls back to the placeholder. No hover preview
+  for DASH still (that would need a full player).
 
 ---
 

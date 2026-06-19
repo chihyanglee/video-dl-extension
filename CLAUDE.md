@@ -117,8 +117,10 @@ DASH `ContentProtection`), live HLS, re-encoding/format conversion. Live and DRM
 are detected but flagged `supported: false` — keep that; don't download them.
 
 Per-kind notes: direct files are handled in `App.onDownload` (not the offscreen
-pipeline). DASH has no in-page preview (no dash.js) — `thumbnailFor` returns
-undefined for it and the row shows a placeholder. The `DownloadJob.source` union
+pipeline). DASH has no hover preview (no dash.js) but does get a still thumbnail
+via manual MSE (`generateDashThumbnail` in `thumbnail.ts`: parse MPD → fetch init +
+first segment → `appendBuffer` → capture; best-effort, falls back to the
+placeholder on CORS/codec failure). The `DownloadJob.source` union
 (`hls` | `dash`) selects the offscreen path; files never produce a `DownloadJob`.
 
 Before expanding scope (e.g. DASH `SegmentBase`, dash.js preview, or a native
