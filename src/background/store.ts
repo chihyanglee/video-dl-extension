@@ -9,6 +9,31 @@ function key(tabId: number): string {
   return `${KEY_PREFIX}${tabId}`;
 }
 
+const chains = new Map<number, Promise<unknown>>();
+
+/**
+ * Atomically read this tab's detections, transform them, and write back.
+ * `mutate` runs with the freshly-read list and returns the next list, or null
+ * for "no change". Resolves true if a write happened. Serializes per tab so
+ * concurrent read-modify-writes (e.g. X demuxed renditions) can't clobber.
+ */
+export async function mutateDetections(
+  tabId: number,
+  mutate: (list: Detection[]) => Detection[] | null,
+): Promise<boolean> {
+  const run = async (): Promise<boolean> => {
+    const list = await getDetections(tabId);
+    const next = mutate(list);
+    if (!next) return false;
+    await chrome.storage.session.set({ [key(tabId)]: next });
+    return true;
+  };
+  const prev = chains.get(tabId) ?? Promise.resolve();
+  const result = prev.then(run, run);
+  chains.set(tabId, result.catch(() => undefined));
+  return result;
+}
+
 export async function getDetections(tabId: number): Promise<Detection[]> {
   const res = await chrome.storage.session.get(key(tabId));
   return (res[key(tabId)] as Detection[] | undefined) ?? [];

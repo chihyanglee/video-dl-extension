@@ -7,7 +7,12 @@ import {
 } from '../shared/m3u8';
 import { parseMpd } from '../shared/mpd';
 import type { CapturedHeaders, Detection, Variant } from '../shared/types';
-import { addDetection, getDetections, removeDetection, updateDetection } from './store';
+import {
+  addDetection,
+  getDetections,
+  mutateDetections,
+  removeDetection,
+} from './store';
 
 const HLS_CONTENT_TYPES = [
   'application/vnd.apple.mpegurl',
@@ -206,70 +211,74 @@ async function classifyGrouped(
   const resolution = res ? `${res[1]}x${res[2]}` : undefined;
   const height = res ? Number(res[2]) : undefined;
 
-  const existing = await getDetections(tabId);
-  const cur = existing.find((d) => d.id === gid);
-
-  // A real master is authoritative — once we have one, ignore loose subs.
-  if (cur && isMaster(text) === false && belongsToMaster(cur, manifestUrl)) return;
-
+  // A real master is authoritative — probe BEFORE the lock (async), then commit
+  // atomically so concurrent renditions can't clobber the write.
   if (isMaster(text)) {
     const master = parseMaster(text, manifestUrl);
     if (!master.variants.length) return;
     const probe = await probeMedia(master.variants[0].url, headers);
-    const det = baseDetection(gid, tabId, manifestUrl, pageUrl, await getTabTitle(tabId), headers, {
+    const title = await getTabTitle(tabId);
+    const det = baseDetection(gid, tabId, manifestUrl, pageUrl, title, headers, {
       kind: 'master',
       variants: master.variants,
       durationSec: probe?.durationSec,
       encryption: probe?.encryption ?? 'none',
       live: probe ? !probe.endlist : false,
     });
-    await putDetection(det, !!cur);
-    notifyDetections(tabId);
+    const changed = await mutateDetections(tabId, (list) => {
+      const i = list.findIndex((d) => d.id === gid);
+      if (i === -1) return [...list, det];
+      const next = list.slice();
+      next[i] = det; // a real master is authoritative — overwrite
+      return next;
+    });
+    if (changed) notifyDetections(tabId);
     return;
   }
 
   const media = parseMedia(text, manifestUrl);
-  if (cur) {
-    const patch: Partial<Detection> = {};
-    if (isAudio) {
-      if (cur.audioUrl) return; // already have audio for this group
-      patch.audioUrl = manifestUrl;
-    } else {
-      if (cur.variants.some((v) => v.url === manifestUrl)) return; // dup variant
-      patch.variants = [...cur.variants, { url: manifestUrl, bandwidth: 0, resolution, height }].sort(
+  const title = await getTabTitle(tabId);
+  const changed = await mutateDetections(tabId, (list) => {
+    const cur = list.find((d) => d.id === gid);
+    // A real master is authoritative — once we have one, ignore loose subs.
+    if (cur && cur.kind === 'master' && cur.variants.length && belongsToMaster(cur, manifestUrl)) {
+      return null;
+    }
+    if (cur) {
+      if (isAudio) {
+        if (cur.audioUrl) return null; // already have audio for this group
+        return replaceById(list, gid, { ...cur, audioUrl: manifestUrl });
+      }
+      if (cur.variants.some((v) => v.url === manifestUrl)) return null; // dup variant
+      const variants = [...cur.variants, { url: manifestUrl, bandwidth: 0, resolution, height }].sort(
         (a, b) => (b.height ?? 0) - (a.height ?? 0),
       );
-      patch.supported = !cur.live && cur.encryption !== 'unsupported-drm';
+      const supported = !cur.live && cur.encryption !== 'unsupported-drm';
+      return replaceById(list, gid, { ...cur, variants, supported });
     }
-    await updateDetection(tabId, gid, patch);
-    notifyDetections(tabId);
-    return;
-  }
-
-  // First rendition seen for this group — create the detection.
-  const det = baseDetection(gid, tabId, manifestUrl, pageUrl, await getTabTitle(tabId), headers, {
-    kind: 'master',
-    variants: isAudio ? [] : [{ url: manifestUrl, bandwidth: 0, resolution, height }],
-    durationSec: media.durationSec,
-    encryption: media.encryption,
-    live: !media.endlist,
+    // First rendition seen for this group — create the detection.
+    const det = baseDetection(gid, tabId, manifestUrl, pageUrl, title, headers, {
+      kind: 'master',
+      variants: isAudio ? [] : [{ url: manifestUrl, bandwidth: 0, resolution, height }],
+      durationSec: media.durationSec,
+      encryption: media.encryption,
+      live: !media.endlist,
+    });
+    if (isAudio) det.audioUrl = manifestUrl;
+    // Not downloadable until at least one video variant exists.
+    det.supported = det.supported && det.variants.length > 0;
+    return [...list, det];
   });
-  if (isAudio) det.audioUrl = manifestUrl;
-  // Not downloadable until at least one video variant exists.
-  det.supported = det.supported && det.variants.length > 0;
-  await putDetection(det, false);
-  notifyDetections(tabId);
+  if (changed) notifyDetections(tabId);
+}
+
+function replaceById(list: Detection[], id: string, det: Detection): Detection[] {
+  return list.map((d) => (d.id === id ? det : d));
 }
 
 function notifyDetections(tabId: number): void {
   void updateBadge(tabId);
   chrome.runtime.sendMessage({ type: 'DETECTIONS_CHANGED', tabId }).catch(() => void 0);
-}
-
-/** Add a new detection, or overwrite the existing one (master supersedes subs). */
-async function putDetection(det: Detection, replace: boolean): Promise<void> {
-  if (replace) await updateDetection(det.tabId, det.id, det);
-  else await addDetection(det);
 }
 
 /**
