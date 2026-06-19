@@ -41,7 +41,6 @@ function headersFromArray(
     if (n === 'referer') h.referer = value;
     else if (n === 'origin') h.origin = value;
     else if (n === 'user-agent') h.userAgent = value;
-    else if (n === 'cookie') h.cookie = value;
     else if (n === 'authorization') h.authorization = value;
   }
   return h;
@@ -53,18 +52,6 @@ function looksLikeHlsUrl(url: string): boolean {
     return /\.m3u8($|\?)/i.test(u.pathname + u.search) || /\.m3u8/i.test(u.pathname);
   } catch {
     return false;
-  }
-}
-
-/** Assemble a Cookie header for `url` if we didn't capture one. */
-async function ensureCookie(url: string, captured?: string): Promise<string | undefined> {
-  if (captured) return captured;
-  try {
-    const cookies = await chrome.cookies.getAll({ url });
-    if (!cookies.length) return undefined;
-    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-  } catch {
-    return undefined;
   }
 }
 
@@ -97,8 +84,6 @@ async function classifyAndStore(
   const id = hashId(manifestUrl);
   const existing = await getDetections(tabId);
   if (existing.some((d) => d.id === id)) return;
-
-  headers.cookie = await ensureCookie(manifestUrl, headers.cookie);
 
   let text: string;
   try {
@@ -344,8 +329,6 @@ async function classifyDash(
   const existing = await getDetections(tabId);
   if (existing.some((d) => d.id === id)) return;
 
-  headers.cookie = await ensureCookie(mpdUrl, headers.cookie);
-
   let text: string;
   try {
     const res = await fetch(mpdUrl, { headers: toFetchHeaders(headers), credentials: 'include' });
@@ -402,7 +385,6 @@ async function classifyFile(
   const existing = await getDetections(tabId);
   if (existing.some((d) => d.id === id)) return;
 
-  headers.cookie = await ensureCookie(fileUrl, headers.cookie);
   const pageTitle = await getTabTitle(tabId);
 
   const detection: Detection = {

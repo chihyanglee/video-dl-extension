@@ -25,7 +25,6 @@ export default defineManifest({
     'downloads',
     'offscreen',
     'sidePanel',
-    'cookies',
     'tabs',
   ],
   host_permissions: ['<all_urls>'],

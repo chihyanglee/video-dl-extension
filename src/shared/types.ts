@@ -6,7 +6,6 @@ export interface CapturedHeaders {
   referer?: string;
   origin?: string;
   userAgent?: string;
-  cookie?: string;
   authorization?: string;
 }
 
