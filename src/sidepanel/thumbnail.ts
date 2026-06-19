@@ -1,18 +1,6 @@
 import Hls from 'hls.js';
 import type { Detection } from '../shared/types';
-
-const CACHE_PREFIX = 'thumb:';
-
-export async function getCachedThumb(id: string): Promise<string | undefined> {
-  const res = await chrome.storage.local.get(CACHE_PREFIX + id);
-  return res[CACHE_PREFIX + id] as string | undefined;
-}
-
-async function setCachedThumb(id: string, dataUrl: string): Promise<void> {
-  await chrome.storage.local.set({ [CACHE_PREFIX + id]: dataUrl });
-  // Also persist onto the detection so the SW state carries it.
-  chrome.runtime.sendMessage({ type: 'SET_THUMBNAIL', id, dataUrl }).catch(() => void 0);
-}
+import { getCachedThumb, setCachedThumb } from './thumbnail-cache';
 
 /**
  * Generate a poster thumbnail for an HLS variant. Uses hls.js → MSE so the
