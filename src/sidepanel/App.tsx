@@ -234,15 +234,17 @@ export function App() {
           </button>
           <button
             className="refresh"
-            title="Clear list and re-detect (reloads the page)"
-            aria-label="Clear list and re-detect"
+            title="Clear the list (page is not reloaded; new videos detect as they play)"
+            aria-label="Clear detected list"
             disabled={tabId == null}
             onClick={() => {
               if (tabId == null) return;
+              // Clear only — don't reload the page. Detection is observational,
+              // so videos already loaded won't reappear, but new playback
+              // re-detects normally.
               void chrome.runtime.sendMessage({ type: 'CLEAR_DETECTIONS', tabId } satisfies Message);
               setDetections([]);
               setProgressByDetection({});
-              void chrome.tabs.reload(tabId); // replays network traffic → re-detect
             }}
           >
             <svg
