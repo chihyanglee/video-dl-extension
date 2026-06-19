@@ -15,6 +15,8 @@ row when done.
 | 004 | Add CI (GitHub Actions): typecheck + build + test on push/PR | P2 | S | 001 | DONE (merged to main) |
 | 005 | Serialize download jobs so concurrent downloads don't corrupt each other | P2 | S–M | — | DONE (merged to main) |
 | 006 | Stop capturing/persisting session cookies (least privilege) | P3 | S | — | DONE (merged to main) |
+| 007 | Bound the thumbnail cache (evict oldest) | P3 | S | 001 | TODO |
+| 008 | SPIKE: Referer for offscreen segment fetches — investigate first | P3 | M | — | TODO (held — speculative) |
 
 > 001–004 merged to `main` (merge commits `a9c1e5a`, `a7f6bae`, `98d486c`, `5157f9d`); 23 tests pass, CI added.
 
