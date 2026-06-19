@@ -7,6 +7,15 @@ import { muxAvToMp4, remuxToMp4 } from './ffmpeg';
 
 const controllers = new Map<string, AbortController>();
 
+// One ffmpeg instance + fixed FS filenames → jobs must not overlap. Serialize.
+let jobChain: Promise<void> = Promise.resolve();
+
+function enqueueJob(job: DownloadJob): void {
+  const ac = new AbortController();
+  controllers.set(job.jobId, ac); // registered now so CANCEL works while queued
+  jobChain = jobChain.then(() => runJob(job, ac));
+}
+
 function report(job: DownloadJob, phase: JobPhase, extra: Partial<JobProgress> = {}): void {
   const progress: JobProgress = { jobId: job.jobId, detectionId: job.detectionId, phase, ...extra };
   chrome.runtime.sendMessage({ type: 'JOB_PROGRESS', progress }).catch(() => void 0);
@@ -170,9 +179,7 @@ async function runDash(
   return muxAvToMp4(videoBytes, 'video.mp4', audioBytes, 'audio.mp4');
 }
 
-async function runJob(job: DownloadJob): Promise<void> {
-  const ac = new AbortController();
-  controllers.set(job.jobId, ac);
+async function runJob(job: DownloadJob, ac: AbortController): Promise<void> {
   const signal = ac.signal;
 
   try {
@@ -207,7 +214,7 @@ async function runJob(job: DownloadJob): Promise<void> {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'OFFSCREEN_START') {
-    void runJob(msg.job as DownloadJob);
+    enqueueJob(msg.job as DownloadJob);
   } else if (msg?.type === 'OFFSCREEN_CANCEL') {
     controllers.get(msg.jobId)?.abort();
   }
