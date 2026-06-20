@@ -467,13 +467,15 @@ export function registerDetection(): void {
       const isHls = looksLikeHlsUrl(details.url) || HLS_CONTENT_TYPES.some((t) => ct?.includes(t));
       const isDash = looksLikeDashUrl(details.url) || DASH_CONTENT_TYPES.some((t) => ct?.includes(t));
       // Direct file: a genuine <video>/<audio> media load (not an MSE segment,
-      // which arrives as xmlhttprequest), with a video/* content-type.
+      // which arrives as xmlhttprequest). The media-element load + a video file
+      // extension is the real signal; content-type is only a fallback, because
+      // some CDNs serve .mp4 as application/octet-stream (e.g. lurl.cc) and the
+      // file would never register if we hard-required a video/* content-type.
       const isFile =
         details.type === 'media' &&
-        !!ct &&
-        ct.startsWith('video/') &&
         !SEGMENT_EXT.test(details.url) &&
-        (FILE_EXT.test(details.url) || ct.includes('mp4') || ct.includes('webm'));
+        (FILE_EXT.test(details.url) ||
+          (!!ct && (ct.startsWith('video/') || ct.includes('mp4') || ct.includes('webm'))));
 
       if (!isHls && !isDash && !isFile) return;
 
