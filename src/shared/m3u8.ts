@@ -36,15 +36,29 @@ export interface KeyInfo {
   iv?: string; // hex with 0x prefix, as in manifest
 }
 
+/** A segment (or init) reference. `byteRange` is set for CMAF single-file
+ *  playlists where every segment is a sub-range of one .m4s (#EXT-X-BYTERANGE). */
+export interface SegmentRef {
+  url: string; // absolute
+  byteRange?: { offset: number; length: number };
+}
+
 export interface MediaPlaylist {
   kind: 'media';
-  segments: string[]; // absolute segment URLs
-  initSegment?: string; // absolute, from #EXT-X-MAP
+  segments: SegmentRef[];
+  initSegment?: SegmentRef; // from #EXT-X-MAP (URI + optional BYTERANGE)
   durationSec: number; // sum of #EXTINF
   endlist: boolean; // #EXT-X-ENDLIST present (VOD)
   key?: KeyInfo;
   encryption: Encryption;
   mediaSequence: number; // #EXT-X-MEDIA-SEQUENCE (default 0); used for default IV
+}
+
+/** Parse an `#EXT-X-BYTERANGE` value `<length>[@<offset>]`. */
+function parseByteRange(s: string): { length: number; offset?: number } | undefined {
+  const m = /^\s*(\d+)(?:@(\d+))?/.exec(s);
+  if (!m) return undefined;
+  return { length: Number(m[1]), offset: m[2] != null ? Number(m[2]) : undefined };
 }
 
 /** An #EXT-X-MEDIA:TYPE=AUDIO rendition (demuxed audio group member). */
@@ -119,12 +133,17 @@ function classifyEncryption(method?: string): Encryption {
 
 export function parseMedia(text: string, baseUrl: string): MediaPlaylist {
   const lines = text.split(/\r?\n/);
-  const segments: string[] = [];
+  const segments: SegmentRef[] = [];
   let durationSec = 0;
   let endlist = false;
-  let initSegment: string | undefined;
+  let initSegment: SegmentRef | undefined;
   let key: KeyInfo | undefined;
   let mediaSequence = 0;
+  // #EXT-X-BYTERANGE applies to the *next* segment line. When its @offset is
+  // omitted, the range starts where the previous sub-range of the same URL
+  // ended (RFC 8216 §4.3.2.2), so track the running end per resource.
+  let pendingRange: { length: number; offset?: number } | undefined;
+  const rangeEnd = new Map<string, number>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -138,9 +157,20 @@ export function parseMedia(text: string, baseUrl: string): MediaPlaylist {
     } else if (line.startsWith('#EXTINF')) {
       const dur = parseFloat(line.slice(line.indexOf(':') + 1));
       if (Number.isFinite(dur)) durationSec += dur;
+    } else if (line.startsWith('#EXT-X-BYTERANGE')) {
+      pendingRange = parseByteRange(line.slice(line.indexOf(':') + 1));
     } else if (line.startsWith('#EXT-X-MAP')) {
       const attrs = parseAttributes(line.slice(line.indexOf(':') + 1));
-      if (attrs['URI']) initSegment = resolveUrl(baseUrl, attrs['URI']);
+      if (attrs['URI']) {
+        const url = resolveUrl(baseUrl, attrs['URI']);
+        const br = attrs['BYTERANGE'] ? parseByteRange(attrs['BYTERANGE']) : undefined;
+        initSegment = { url };
+        if (br) {
+          const offset = br.offset ?? 0;
+          initSegment.byteRange = { offset, length: br.length };
+          rangeEnd.set(url, offset + br.length);
+        }
+      }
     } else if (line.startsWith('#EXT-X-KEY')) {
       const attrs = parseAttributes(line.slice(line.indexOf(':') + 1));
       key = {
@@ -149,7 +179,15 @@ export function parseMedia(text: string, baseUrl: string): MediaPlaylist {
         iv: attrs['IV'],
       };
     } else if (!line.startsWith('#')) {
-      segments.push(resolveUrl(baseUrl, line));
+      const url = resolveUrl(baseUrl, line);
+      const seg: SegmentRef = { url };
+      if (pendingRange) {
+        const offset = pendingRange.offset ?? rangeEnd.get(url) ?? 0;
+        seg.byteRange = { offset, length: pendingRange.length };
+        rangeEnd.set(url, offset + pendingRange.length);
+        pendingRange = undefined;
+      }
+      segments.push(seg);
     }
   }
 

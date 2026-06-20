@@ -72,7 +72,11 @@ async function buildHlsTrack(
 
   const parts: Uint8Array[] = [];
   const fmp4 = !!media.initSegment;
-  if (media.initSegment) parts.push(await fetchBytes(media.initSegment, job.headers, signal));
+  if (media.initSegment) {
+    parts.push(
+      await fetchBytes(media.initSegment.url, job.headers, signal, media.initSegment.byteRange),
+    );
+  }
   parts.push(...decrypted);
   return { bytes: concat(parts), fmp4 };
 }
@@ -123,7 +127,8 @@ async function fetchTrack(
 ): Promise<Uint8Array> {
   const parts: Uint8Array[] = [];
   if (initUrl) parts.push(await fetchBytes(initUrl, job.headers, signal));
-  const segs = await fetchAll(mediaUrls, job.headers, signal, onProgress);
+  // DASH SegmentTemplate yields whole-file segment URLs (no byte ranges).
+  const segs = await fetchAll(mediaUrls.map((url) => ({ url })), job.headers, signal, onProgress);
   parts.push(...segs);
   return concat(parts);
 }

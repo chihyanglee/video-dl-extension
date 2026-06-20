@@ -1,12 +1,15 @@
 import type { CapturedHeaders } from '../shared/types';
+import type { SegmentRef } from '../shared/m3u8';
 
 const MAX_CONCURRENCY = 6;
 const MAX_RETRIES = 3;
 
-function toHeaders(h: CapturedHeaders): Record<string, string> {
+function toHeaders(h: CapturedHeaders, byteRange?: { offset: number; length: number }): Record<string, string> {
   const out: Record<string, string> = {};
   if (h.referer) out['Referer'] = h.referer;
   if (h.authorization) out['Authorization'] = h.authorization;
+  // CMAF single-file segments: request just this sub-range of the .m4s.
+  if (byteRange) out['Range'] = `bytes=${byteRange.offset}-${byteRange.offset + byteRange.length - 1}`;
   return out;
 }
 
@@ -16,16 +19,19 @@ export async function fetchBytes(
   url: string,
   headers: CapturedHeaders,
   signal: AbortSignal,
+  byteRange?: { offset: number; length: number },
 ): Promise<Uint8Array> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (signal.aborted) throw new DOMException('aborted', 'AbortError');
     try {
       const res = await fetch(url, {
-        headers: toHeaders(headers),
+        headers: toHeaders(headers, byteRange),
         credentials: 'include',
         signal,
       });
+      // A Range request should yield 206; some servers answer 200 with the full
+      // body (then we'd have the bytes anyway). Both are acceptable.
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
       const buf = await res.arrayBuffer();
       return new Uint8Array(buf);
@@ -43,27 +49,27 @@ export async function fetchBytes(
  * each time any segment completes so the caller can report progress.
  */
 export async function fetchAll(
-  urls: string[],
+  segs: SegmentRef[],
   headers: CapturedHeaders,
   signal: AbortSignal,
   onDone: (completed: number, total: number) => void,
 ): Promise<Uint8Array[]> {
-  const results: Uint8Array[] = new Array(urls.length);
+  const results: Uint8Array[] = new Array(segs.length);
   let completed = 0;
   let next = 0;
 
   async function worker(): Promise<void> {
     while (true) {
       const i = next++;
-      if (i >= urls.length) return;
-      results[i] = await fetchBytes(urls[i], headers, signal);
+      if (i >= segs.length) return;
+      results[i] = await fetchBytes(segs[i].url, headers, signal, segs[i].byteRange);
       completed++;
-      onDone(completed, urls.length);
+      onDone(completed, segs.length);
     }
   }
 
   const workers = Array.from(
-    { length: Math.min(MAX_CONCURRENCY, urls.length) },
+    { length: Math.min(MAX_CONCURRENCY, segs.length) },
     () => worker(),
   );
   await Promise.all(workers);

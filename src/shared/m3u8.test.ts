@@ -63,8 +63,32 @@ describe('parseMedia', () => {
     expect(media.segments).toHaveLength(2);
     expect(media.durationSec).toBe(8);
     expect(media.encryption).toBe('none');
-    expect(media.segments[0]).toBe('https://h/path/seg0.ts');
-    expect(media.segments[1]).toBe('https://h/path/seg1.ts');
+    expect(media.segments[0].url).toBe('https://h/path/seg0.ts');
+    expect(media.segments[1].url).toBe('https://h/path/seg1.ts');
+    expect(media.segments[0].byteRange).toBeUndefined();
+  });
+
+  it('parses CMAF single-file byte-range segments (#EXT-X-BYTERANGE)', () => {
+    const text = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:6',
+      '#EXT-X-MAP:URI="v.m4s",BYTERANGE="895@0"',
+      '#EXTINF:6.0,',
+      '#EXT-X-BYTERANGE:1285448@975',
+      'v.m4s',
+      '#EXTINF:6.0,',
+      '#EXT-X-BYTERANGE:1261697', // offset omitted → continues from previous end
+      'v.m4s',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    const media = parseMedia(text, 'https://h/path/media.m3u8');
+    expect(media.initSegment?.url).toBe('https://h/path/v.m4s');
+    expect(media.initSegment?.byteRange).toEqual({ offset: 0, length: 895 });
+    expect(media.segments).toHaveLength(2);
+    expect(media.segments[0].url).toBe('https://h/path/v.m4s');
+    expect(media.segments[0].byteRange).toEqual({ offset: 975, length: 1285448 });
+    // Second segment's offset is implied: 975 + 1285448 = 1286423.
+    expect(media.segments[1].byteRange).toEqual({ offset: 1286423, length: 1261697 });
   });
 
   it('parses AES-128 encryption with an explicit IV and absolute key URI', () => {
@@ -102,7 +126,7 @@ describe('parseMedia', () => {
       '#EXT-X-ENDLIST',
     ].join('\n');
     const media = parseMedia(text, 'https://h/path/media.m3u8');
-    expect(media.initSegment).toBe('https://h/path/init.mp4');
+    expect(media.initSegment?.url).toBe('https://h/path/init.mp4');
   });
 
   it('reports endlist=false for a live playlist', () => {

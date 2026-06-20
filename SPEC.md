@@ -144,7 +144,10 @@ Pipeline per job:
 2. If master → already resolved to chosen variant URL by side panel; fetch that
    media playlist.
 3. **Parse media playlist**: segment URIs, `#EXT-X-MAP` (init segment for fMP4),
-   `#EXT-X-KEY` (AES-128 method/URI/IV), `#EXTINF` durations.
+   `#EXT-X-KEY` (AES-128 method/URI/IV), `#EXTINF` durations, and
+   `#EXT-X-BYTERANGE` (CMAF single-file playlists where every segment is a
+   sub-range of one `.m4s`; implicit offsets continue from the prior range). The
+   fetcher issues `Range` requests for ranged segments.
 4. **Guard**: no `#EXT-X-ENDLIST` → abort as "live, unsupported".
    `METHOD=SAMPLE-AES` or unknown → abort "DRM, unsupported".
 5. **Fetch AES key** (if `METHOD=AES-128`) from key URI (with headers).

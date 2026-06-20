@@ -273,7 +273,7 @@ function notifyDetections(tabId: number): void {
  * neither, so this won't misflag normal HLS.
  */
 function isAudioOnlyHls(manifestUrl: string, media: MediaPlaylist): boolean {
-  const sample = `${manifestUrl} ${media.initSegment ?? ''} ${media.segments[0] ?? ''}`;
+  const sample = `${manifestUrl} ${media.initSegment?.url ?? ''} ${media.segments[0]?.url ?? ''}`;
   return /\/aud\/|\/mp4a\//i.test(sample);
 }
 
