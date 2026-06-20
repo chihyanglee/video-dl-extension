@@ -1,7 +1,7 @@
 import Hls from 'hls.js';
 import type { Detection } from '../shared/types';
 import { parseMpd, buildSegmentUrls } from '../shared/mpd';
-import { withRefererRule } from './referer';
+import { withRefererRule, fetchWithReferer } from './referer';
 import { getCachedThumb, setCachedThumb } from './thumbnail-cache';
 
 /** Draw the current frame of a ready <video> to a canvas → JPEG dataURL.
@@ -88,21 +88,37 @@ export async function generateThumbnail(id: string, variantUrl: string): Promise
   return dataUrl;
 }
 
-/** Thumbnail for a directly-playable file: seek a native <video> and snapshot. */
-export async function generateNativeThumbnail(id: string, fileUrl: string): Promise<string> {
+/**
+ * Thumbnail for a directly-playable file. We fetch the bytes ourselves (via
+ * fetchWithReferer: rides cookies, sets Referer to defeat hotlink protection,
+ * and — thanks to the extension's host_permissions — bypasses CORS) and play
+ * from a blob: URL. A direct cross-origin `<video crossorigin>` would otherwise
+ * 403 without a Referer or taint the canvas without CORS headers; a same-origin
+ * blob avoids both.
+ */
+export async function generateNativeThumbnail(
+  id: string,
+  fileUrl: string,
+  referer?: string,
+): Promise<string> {
   const cached = await getCachedThumb(id);
   if (cached) return cached;
+
+  const blob = await fetchWithReferer(fileUrl, referer);
+  const objectUrl = URL.createObjectURL(blob);
 
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
-    video.crossOrigin = 'anonymous';
     video.preload = 'metadata';
-    video.src = fileUrl;
+    video.src = objectUrl;
 
     let settled = false;
-    const cleanup = () => video.remove();
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl);
+      video.remove();
+    };
     const fail = (e: unknown) => {
       if (settled) return;
       settled = true;
@@ -261,7 +277,9 @@ function captureFromMse(mime: string, parts: ArrayBuffer[]): Promise<string> {
 
 /** Pick the right thumbnail strategy for a detection. */
 export async function thumbnailFor(det: Detection): Promise<string | undefined> {
-  if (det.kind === 'file') return generateNativeThumbnail(det.id, det.manifestUrl);
+  if (det.kind === 'file') {
+    return generateNativeThumbnail(det.id, det.manifestUrl, det.headers?.referer ?? det.pageUrl);
+  }
   if (det.kind === 'master' || det.kind === 'media') {
     return generateThumbnail(det.id, det.variants[0]?.url ?? det.manifestUrl);
   }

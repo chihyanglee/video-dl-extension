@@ -187,6 +187,12 @@ cross-origin-isolation (COOP/COEP) setup. CPU is light because we only remux.
   `<video src=segment>` approach would taint and throw).
 - Thumbnail: seek to first keyframe (~0s, fallback ~10%), draw to `<canvas>`,
   export JPEG dataURL, cache.
+- **Direct files**: a cross-origin `<video crossorigin>` would 403 on hotlink CDNs
+  (no Referer) or taint the canvas (no CORS headers). So the thumbnail fetches the
+  bytes via `fetchWithReferer` (host_permissions bypass CORS, DNR sets Referer) and
+  plays from a same-origin `blob:` URL. The hover preview instead installs a
+  lifetime-scoped Referer DNR rule and streams directly (playback needs no CORS, so
+  no full download).
 - **DASH** has no dash.js, but still gets a thumbnail via **manual MSE**: parse the
   MPD, pick the smallest video Representation (fastest to fetch), fetch its init +
   first media segment ourselves, `appendBuffer` both into a `SourceBuffer`, seek,

@@ -108,6 +108,7 @@ export function StreamRow({
           <HoverPreview
             variantUrl={variant?.url ?? detection.manifestUrl}
             native={detection.kind === 'file'}
+            referer={detection.headers?.referer ?? detection.pageUrl}
           />
         ) : thumb ? (
           <img src={thumb} alt="" />

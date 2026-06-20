@@ -5,6 +5,40 @@
 // Session-rule id in a high range to avoid clashing with any static rules.
 let drnRuleSeq = 100000;
 
+/**
+ * Install a standalone Referer rewrite that lives until you remove it. Use for a
+ * <video>/<audio> element, which streams over many range requests across its
+ * lifetime — a fetch-scoped rule (withRefererRule) would be gone after the first.
+ * Element media requests are resourceType `media`, so include it. Returns the
+ * rule id; pass it to removeRefererRule on teardown.
+ */
+export async function installRefererRule(
+  urlFilter: string,
+  referer: string,
+  resourceTypes = ['media', 'xmlhttprequest'] as chrome.declarativeNetRequest.ResourceType[],
+): Promise<number> {
+  const ruleId = ++drnRuleSeq;
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [ruleId],
+    addRules: [
+      {
+        id: ruleId,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [{ header: 'referer', operation: 'set', value: referer }],
+        },
+        condition: { urlFilter, resourceTypes },
+      } as chrome.declarativeNetRequest.Rule,
+    ],
+  });
+  return ruleId;
+}
+
+export async function removeRefererRule(ruleId: number): Promise<void> {
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+}
+
 /** Run `fn` with `Referer` forced to `referer` for requests matching `url`. */
 export async function withRefererRule<T>(
   url: string,
