@@ -87,10 +87,7 @@ async function classifyAndStore(
 
   let text: string;
   try {
-    const res = await fetch(manifestUrl, {
-      headers: toFetchHeaders(headers),
-      credentials: 'include',
-    });
+    const res = await fetchManifest(manifestUrl, headers);
     if (!res.ok) return;
     text = await res.text();
   } catch {
@@ -282,7 +279,7 @@ async function probeMedia(
   headers: CapturedHeaders,
 ): Promise<MediaPlaylist | undefined> {
   try {
-    const res = await fetch(url, { headers: toFetchHeaders(headers), credentials: 'include' });
+    const res = await fetchManifest(url, headers);
     if (!res.ok) return undefined;
     const text = await res.text();
     if (!text.includes('#EXTM3U')) return undefined;
@@ -331,7 +328,7 @@ async function classifyDash(
 
   let text: string;
   try {
-    const res = await fetch(mpdUrl, { headers: toFetchHeaders(headers), credentials: 'include' });
+    const res = await fetchManifest(mpdUrl, headers);
     if (!res.ok) return;
     text = await res.text();
   } catch {
@@ -425,6 +422,47 @@ export function toFetchHeaders(h: CapturedHeaders): Record<string, string> {
   // Note: Cookie/User-Agent/Origin are forbidden fetch headers and are set by
   // the browser from the extension context; we rely on credentials:'include'.
   return out;
+}
+
+// Session-rule id range for the SW's own Referer rewrites. Kept distinct from
+// the side panel's range (referer.ts starts at 100000) so they never collide.
+let dnrSeq = 200000;
+
+/**
+ * Fetch a manifest with the page's Referer forced for real.
+ *
+ * `toFetchHeaders` sets a `Referer` header, but `Referer` is a forbidden fetch
+ * header — the browser silently drops it. Most CDNs don't check it, but some
+ * hotlink-protect their manifests (e.g. Pornhub's phncdn) and 403 the
+ * Referer-less extension fetch, so the stream never gets detected. We rewrite
+ * Referer at the network layer with a scoped, self-removing declarativeNetRequest
+ * session rule (needs the `declarativeNetRequest` permission). Authorization is
+ * NOT forbidden, so it still rides along via toFetchHeaders.
+ */
+async function fetchManifest(url: string, headers: CapturedHeaders): Promise<Response> {
+  const referer = headers.referer;
+  const opts: RequestInit = { headers: toFetchHeaders(headers), credentials: 'include' };
+  if (!referer) return fetch(url, opts);
+  const ruleId = ++dnrSeq;
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [ruleId],
+    addRules: [
+      {
+        id: ruleId,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [{ header: 'referer', operation: 'set', value: referer }],
+        },
+        condition: { urlFilter: url, resourceTypes: ['xmlhttprequest'] },
+      } as chrome.declarativeNetRequest.Rule,
+    ],
+  });
+  try {
+    return await fetch(url, opts);
+  } finally {
+    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+  }
 }
 
 // Detection can be paused from the side panel; persisted so it survives SW
