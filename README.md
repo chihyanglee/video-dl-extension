@@ -30,8 +30,9 @@ ffmpeg.wasm in the browser.
 - **Dev mode** (`</>` toggle): per-detection debug block — manifest URL, captured
   headers, dedup id, variants, plus live **Probe** (HTTP status + content-type)
   and **View manifest** tools for diagnosing detection/preview issues.
-- **Lazy thumbnails** generated with hls.js → `<canvas>`, cached in
-  `chrome.storage`.
+- **Lazy thumbnails** captured to `<canvas>` and cached in `chrome.storage` —
+  HLS via hls.js, DASH via manual MSE, direct files from a fetched blob
+  (best-effort; falls back to a placeholder on CORS/codec failure).
 - **On-hover mini-player** preview (single live instance at a time).
 - **Download pipeline** running in an offscreen document:
   fetch segments (concurrent + retry) → AES-128 decrypt (if needed) → concat →
@@ -124,7 +125,7 @@ video-dl-extension/
    │  ├─ mpd.ts               # DASH MPD parser + segment-URL builder
    │  └─ hash.ts              # stable id hash for manifest URLs
    ├─ background/
-   │  ├─ index.ts             # SW entry: listeners, offscreen lifecycle, routing
+   │  ├─ index.ts             # SW entry: routing, offscreen lifecycle, download Referer rule
    │  ├─ detect.ts            # match + classify + capture headers + badge
    │  └─ store.ts             # per-tab detection state (storage.session)
    ├─ offscreen/
@@ -164,6 +165,7 @@ Other scripts:
 
 ```bash
 pnpm dev        # Vite dev build with HMR
+pnpm test       # vitest unit tests
 pnpm typecheck  # tsc --noEmit
 pnpm serve:test # serve test/ at http://localhost:8080
 ```
@@ -192,18 +194,21 @@ To test the AES-128 path, append your own encrypted VOD URL:
 
 ## Testing
 
-Core domain logic is verified headlessly by bundling the modules with esbuild and
-running fixtures under Node (Node 24 provides a global WebCrypto):
+Pure domain logic is unit-tested with **vitest** (`pnpm test`) — 26 tests across
+5 files:
 
-- **HLS parser** (`17/17`) — master/media classification, variant sorting + URL
-  resolution, duration summation, ENDLIST (VOD/live), media-sequence,
-  AES-128 vs SAMPLE-AES classification, `#EXT-X-MAP`.
-- **Decryption** (`5/5`) — AES-128-CBC round-trip and IV derivation (explicit IV
-  + sequence-number default).
-- **DASH MPD parser** (`18/18`) — ISO-8601 duration, video/audio representation
-  classification + sorting, `BaseURL` resolution, `SegmentTemplate` with
-  `$Number$`/`$RepresentationID$`/`%0Nd` and `SegmentTimeline`, segment-count from
-  `@duration`, live + `ContentProtection` flagged unsupported.
+- **HLS parser** (`m3u8.test.ts`, 10) — master/media classification, variant
+  sorting + URL resolution, duration summation, ENDLIST (VOD/live), AES-128 vs
+  SAMPLE-AES classification, `#EXT-X-MAP`, and CMAF single-file byte-range
+  segments (`#EXT-X-BYTERANGE`).
+- **DASH MPD parser** (`mpd.test.ts`, 8) — ISO-8601 duration, video/audio
+  representation classification + sorting, `BaseURL` resolution, `SegmentTemplate`
+  (`$Number$`/`$RepresentationID$`/`%0Nd`) and `SegmentTimeline`, live +
+  `ContentProtection` flagged unsupported.
+- **Decryption** (`decrypt.test.ts`, 5) — AES-128-CBC round-trip and IV
+  derivation (explicit IV + sequence-number default); needs Node ≥ 20 WebCrypto.
+- **Detection store** (`store.test.ts`, 1) and **thumbnail cache**
+  (`thumbnail-cache.test.ts`, 2).
 
 The end-to-end download (network → ffmpeg.wasm → file) cannot be exercised
 headlessly; it has been **verified manually in Chrome** against the test page
@@ -222,9 +227,10 @@ above (HLS, DASH, and direct-file paths).
 - **Header expiry:** request headers captured at detection time may expire before
   download on token-protected CDNs; such downloads fail with an error.
 - **`<all_urls>` + `declarativeNetRequest` permissions:** `<all_urls>` is needed
-  to observe and fetch on arbitrary sites; `declarativeNetRequest` is used to set
-  the `Referer` on our own download fetches (a forbidden `fetch` header). Both are
-  review-sensitive for store submission.
+  to observe and fetch on arbitrary sites; `declarativeNetRequest` rewrites the
+  `Referer` (a forbidden `fetch` header) on our own detection **and** download
+  fetches so hotlink-protected CDNs don't return a 403. Both are review-sensitive
+  for store submission.
 - **ffmpeg cold load:** the ~32 MB core loads lazily on the first download; the
   UI shows a “preparing” state.
 

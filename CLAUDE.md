@@ -17,6 +17,7 @@ usage: `README.md`.
 pnpm install
 pnpm build        # tsc --noEmit && vite build  →  dist/   (run this to verify a change compiles)
 pnpm typecheck    # tsc --noEmit only
+pnpm test         # vitest — unit tests for parsers, crypto, store, thumbnail cache
 pnpm dev          # Vite HMR
 pnpm serve:test   # serve test/ at http://localhost:8080 (hls-test.html)
 ```
@@ -24,19 +25,13 @@ pnpm serve:test   # serve test/ at http://localhost:8080 (hls-test.html)
 Load `dist/` as an unpacked extension at `chrome://extensions` (Developer mode).
 
 ### Verifying logic without a browser
-The MV3 runtime can't be driven headlessly here, but pure modules can. Bundle one
-with the already-installed esbuild and run fixtures under Node (Node ≥ 20 has a
-global WebCrypto):
-
-```bash
-pnpm exec esbuild src/shared/m3u8.ts --bundle --format=esm --outfile=/tmp/m.mjs --log-level=error
-node /tmp/test.mjs   # import from /tmp/m.mjs and assert
-```
-
-This is how `src/shared/m3u8.ts` (HLS parser), `src/shared/mpd.ts` (DASH parser),
-and `src/offscreen/decrypt.ts` (AES) were verified. Prefer this for any change to
-parsing or crypto. The end-to-end download path (network → ffmpeg.wasm → file)
-requires loading in Chrome.
+The MV3 runtime can't be driven headlessly here, but pure modules are unit-tested
+with **vitest** (`pnpm test`). Covered today: `src/shared/m3u8.ts` (HLS parser),
+`src/shared/mpd.ts` (DASH parser), `src/offscreen/decrypt.ts` (AES, needs the
+global WebCrypto in Node ≥ 20), `src/background/store.ts`, and the side-panel
+thumbnail cache. Add a `*.test.ts` beside the module and run `pnpm test`. Prefer
+a unit test for any change to parsing or crypto. The end-to-end download path
+(network → ffmpeg.wasm → file) still requires loading in Chrome.
 
 ## Architecture (three contexts, one job each)
 
@@ -88,11 +83,20 @@ loops).
   and `OFFSCREEN_PATH` in `src/background/index.ts`.
 - **Forbidden fetch headers.** `Cookie`/`User-Agent`/`Origin`/**`Referer`** can't
   be set on `fetch` — the browser drops them. Rely on `credentials: 'include'` for
-  cookies. `toFetchHeaders` sets `Referer`/`Authorization` for the SW's *manifest*
-  fetches; the `Referer` is silently dropped but those CDNs don't check it. To set
-  `Referer` for real (hotlink-protected downloads), rewrite it at the network layer
-  with a scoped `declarativeNetRequest` session rule — `withRefererRule` in
-  `src/sidepanel/referer.ts` (needs the `declarativeNetRequest` permission).
+  cookies. `Authorization` is *not* forbidden and rides along via `toFetchHeaders`.
+  `Referer` is dropped, so to send it for real we rewrite it at the network layer
+  with a scoped `declarativeNetRequest` session rule (needs the
+  `declarativeNetRequest` permission). Hotlink-protected CDNs (e.g. phncdn) 403
+  the Referer-less request, which breaks **detection and download**, not just
+  preview. Three places install such a rule, each with its own rule-id range so
+  the extension-global session-rule ids never collide:
+  - SW manifest fetches — `fetchManifest` in `src/background/detect.ts` (ids `200000+`).
+  - The offscreen HLS/DASH download, for a job's lifetime — `installJobReferer` in
+    `src/background/index.ts` (ids `300000+`). Offscreen docs **can't** call
+    `declarativeNetRequest`, so the SW owns the rule and removes it on the
+    terminal `JOB_PROGRESS`.
+  - Side-panel direct-file + hover-preview fetches — `withRefererRule` /
+    `installRefererRule` in `src/sidepanel/referer.ts` (ids `100000+`).
 - **`webRequest` is observational only** in MV3 (no blocking). Detection uses
   `onBeforeSendHeaders` (capture) + `onHeadersReceived` (classify). Skip requests
   whose `initiator` is `chrome-extension://` to avoid detecting our own fetches.
