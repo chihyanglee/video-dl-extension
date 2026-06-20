@@ -131,6 +131,24 @@ header h1 { font-size: 15px; margin: 0; }
 
 .empty { color: var(--muted); font-size: 12px; }
 
+/* Section grouping (Downloads / Detected) */
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 2px 2px 6px;
+}
+/* The Downloads queue stays pinned above the detected list and survives tab
+   switches — downloads run in the offscreen doc, independent of the page. */
+.dl-section {
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dl-section + .section-label { margin-top: 10px; }
+
 .row {
   display: flex;
   gap: 10px;

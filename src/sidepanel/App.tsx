@@ -19,6 +19,11 @@ export function App() {
   const [paused, setPaused] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [progressByDetection, setProgressByDetection] = useState<Record<string, JobProgress>>({});
+  // Detection snapshots taken at download-start. Downloads run in the offscreen
+  // doc (tab-independent), but the detected list is per-tab and gets replaced on
+  // tab switch — so we keep our own copy to render the Downloads section no
+  // matter which tab is active.
+  const [jobDetections, setJobDetections] = useState<Record<string, Detection>>({});
   const jobToDetection = useRef<Record<string, string>>({});
 
   const refresh = useCallback(async (id: number) => {
@@ -74,6 +79,8 @@ export function App() {
 
   const onDownload = useCallback((det: Detection, variant: Variant) => {
     const baseName = sanitizeFilename(det.customName ?? det.pageTitle);
+    // Snapshot the detection so its row survives a tab switch (see jobDetections).
+    setJobDetections((prev) => ({ ...prev, [det.id]: det }));
     // Direct files bypass the ffmpeg pipeline. We must fetch them ourselves
     // rather than hand the URL to chrome.downloads: many CDNs gate the file
     // behind a Referer check (hotlink protection), and the download manager
@@ -179,9 +186,21 @@ export function App() {
     [tabId],
   );
 
-  // An in-progress download stays pinned to the top, then newest first — so a
-  // live download isn't pushed off-screen as new detections stream in (e.g.
-  // scrolling an X timeline keeps surfacing fresh videos).
+  // Remove a finished/failed item from the Downloads section. If it's still a
+  // current-tab detection it drops back into the detected list below.
+  const onClearDownload = useCallback((det: Detection) => {
+    setProgressByDetection((prev) => {
+      const n = { ...prev };
+      delete n[det.id];
+      return n;
+    });
+    setJobDetections((prev) => {
+      const n = { ...prev };
+      delete n[det.id];
+      return n;
+    });
+  }, []);
+
   const TERMINAL = new Set(['done', 'error', 'cancelled']);
   const isActive = (d: Detection): boolean => {
     const p = progressByDetection[d.id];
@@ -189,8 +208,18 @@ export function App() {
   };
   const order = (a: Detection, b: Detection) =>
     Number(isActive(b)) - Number(isActive(a)) || b.detectedAt - a.detectedAt;
-  const supported = detections.filter((d) => d.supported).sort(order);
-  const unsupported = detections.filter((d) => !d.supported).sort(order);
+
+  // Downloads section: anything with progress, drawn from the snapshot (so it
+  // survives tab switches) or the current list. Active first, then newest.
+  const downloads = Object.keys(progressByDetection)
+    .map((id) => jobDetections[id] ?? detections.find((d) => d.id === id))
+    .filter((d): d is Detection => !!d)
+    .sort(order);
+  const inDownloads = new Set(downloads.map((d) => d.id));
+
+  // Detected list excludes whatever's already shown under Downloads.
+  const supported = detections.filter((d) => d.supported && !inDownloads.has(d.id)).sort(order);
+  const unsupported = detections.filter((d) => !d.supported && !inDownloads.has(d.id)).sort(order);
 
   return (
     <div className="app">
@@ -244,7 +273,8 @@ export function App() {
               // re-detects normally.
               void chrome.runtime.sendMessage({ type: 'CLEAR_DETECTIONS', tabId } satisfies Message);
               setDetections([]);
-              setProgressByDetection({});
+              // Keep the Downloads section — in-flight/finished downloads aren't
+              // tied to the detected list and shouldn't vanish on a list clear.
             }}
           >
             <svg
@@ -265,22 +295,45 @@ export function App() {
         </div>
       </header>
 
-      {detections.length === 0 && (
-        <p className="empty">No video streams detected on this tab yet. Play a video to detect it.</p>
+      {downloads.length > 0 && (
+        <section className="dl-section">
+          <div className="section-label">Downloads</div>
+          {downloads.map((d) => (
+            <StreamRow
+              key={d.id}
+              detection={d}
+              progress={progressByDetection[d.id]}
+              dev={dev}
+              onDownload={onDownload}
+              onCancel={onCancel}
+              onRename={onRename}
+              onDismiss={onClearDownload}
+            />
+          ))}
+        </section>
       )}
 
-      {[...supported, ...unsupported].map((d) => (
-        <StreamRow
-          key={d.id}
-          detection={d}
-          progress={progressByDetection[d.id]}
-          dev={dev}
-          onDownload={onDownload}
-          onCancel={onCancel}
-          onRename={onRename}
-          onDismiss={onDismiss}
-        />
-      ))}
+      {supported.length + unsupported.length === 0 ? (
+        downloads.length === 0 && (
+          <p className="empty">No video streams detected on this tab yet. Play a video to detect it.</p>
+        )
+      ) : (
+        <>
+          {downloads.length > 0 && <div className="section-label">Detected</div>}
+          {[...supported, ...unsupported].map((d) => (
+            <StreamRow
+              key={d.id}
+              detection={d}
+              progress={progressByDetection[d.id]}
+              dev={dev}
+              onDownload={onDownload}
+              onCancel={onCancel}
+              onRename={onRename}
+              onDismiss={onDismiss}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }
