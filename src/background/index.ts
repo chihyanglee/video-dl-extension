@@ -65,6 +65,53 @@ async function ensureOffscreen(): Promise<void> {
   await waitForOffscreenReady();
 }
 
+// --- Referer rewrite for the offscreen download path ---
+// Offscreen documents can't use declarativeNetRequest, and fetch() can't set the
+// forbidden Referer header. Hotlink-protected CDNs (e.g. phncdn) 403 the
+// Referer-less segment/playlist fetches, so the SW installs a session rule for
+// the job's lifetime that rewrites Referer for requests to the manifest host.
+// Id range kept distinct from detect.ts (200000) and the side panel (100000).
+let dlRuleSeq = 300000;
+const jobRefererRule = new Map<string, number>();
+
+async function installJobReferer(
+  jobId: string,
+  manifestUrl: string,
+  referer: string | undefined,
+): Promise<void> {
+  if (!referer) return;
+  let host: string;
+  try {
+    host = new URL(manifestUrl).hostname;
+  } catch {
+    return;
+  }
+  const ruleId = ++dlRuleSeq;
+  jobRefererRule.set(jobId, ruleId);
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [ruleId],
+    addRules: [
+      {
+        id: ruleId,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [{ header: 'referer', operation: 'set', value: referer }],
+        },
+        // Offscreen fetches are xmlhttprequest; media/other cover element loads.
+        condition: { urlFilter: `||${host}`, resourceTypes: ['xmlhttprequest', 'media', 'other'] },
+      } as chrome.declarativeNetRequest.Rule,
+    ],
+  });
+}
+
+async function removeJobReferer(jobId: string): Promise<void> {
+  const ruleId = jobRefererRule.get(jobId);
+  if (ruleId == null) return;
+  jobRefererRule.delete(jobId);
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] }).catch(() => void 0);
+}
+
 // Track active jobs so we can tear down the offscreen doc when idle.
 const activeJobs = new Set<string>();
 
@@ -110,12 +157,17 @@ onMessage(async (msg: Message, _sender) => {
       await updateBadge(msg.tabId);
       return { ok: true };
 
-    case 'START_DOWNLOAD':
+    case 'START_DOWNLOAD': {
       activeJobs.add(msg.job.jobId);
+      // Force the page Referer for every fetch this job makes (see installJobReferer).
+      const manifestUrl =
+        msg.job.source.type === 'hls' ? msg.job.source.mediaPlaylistUrl : msg.job.source.mpdUrl;
+      await installJobReferer(msg.job.jobId, manifestUrl, msg.job.headers.referer);
       await ensureOffscreen();
       // Forward to offscreen (it listens on the same runtime channel).
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_START', job: msg.job }).catch(() => void 0);
       return { ok: true };
+    }
 
     case 'OFFSCREEN_READY':
       offscreenReady = true;
@@ -146,6 +198,7 @@ onMessage(async (msg: Message, _sender) => {
       const { phase, jobId } = msg.progress;
       if (phase === 'done' || phase === 'error' || phase === 'cancelled') {
         activeJobs.delete(jobId);
+        await removeJobReferer(jobId);
         await maybeCloseOffscreen();
       }
       return { ok: true };
