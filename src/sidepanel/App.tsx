@@ -13,6 +13,8 @@ function newJobId(): string {
   return `job_${Date.now().toString(36)}_${jobSeq++}`;
 }
 
+const TERMINAL = new Set(['done', 'error', 'cancelled']);
+
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [dev, setDev] = useState<boolean>(() => localStorage.getItem('dev') === '1');
@@ -201,7 +203,26 @@ export function App() {
     });
   }, []);
 
-  const TERMINAL = new Set(['done', 'error', 'cancelled']);
+  // Bulk-clear every finished/failed/cancelled download in one go. Active jobs
+  // are left untouched (no terminal phase) — same drop-back-to-Detected rule as
+  // the per-row clear applies to anything still detected on the current tab.
+  const onClearFinished = useCallback(() => {
+    const terminalIds = Object.entries(progressByDetection)
+      .filter(([, p]) => TERMINAL.has(p.phase))
+      .map(([id]) => id);
+    if (!terminalIds.length) return;
+    setProgressByDetection((prev) => {
+      const n = { ...prev };
+      terminalIds.forEach((id) => delete n[id]);
+      return n;
+    });
+    setJobDetections((prev) => {
+      const n = { ...prev };
+      terminalIds.forEach((id) => delete n[id]);
+      return n;
+    });
+  }, [progressByDetection]);
+
   const isActive = (d: Detection): boolean => {
     const p = progressByDetection[d.id];
     return !!p && !TERMINAL.has(p.phase);
@@ -216,6 +237,10 @@ export function App() {
     .filter((d): d is Detection => !!d)
     .sort(order);
   const inDownloads = new Set(downloads.map((d) => d.id));
+  const finishedCount = downloads.reduce(
+    (n, d) => n + (TERMINAL.has(progressByDetection[d.id]?.phase ?? '') ? 1 : 0),
+    0,
+  );
 
   // Detected list excludes whatever's already shown under Downloads.
   const supported = detections.filter((d) => d.supported && !inDownloads.has(d.id)).sort(order);
@@ -297,7 +322,18 @@ export function App() {
 
       {downloads.length > 0 && (
         <section className="dl-section">
-          <div className="section-label">Downloads</div>
+          <div className="dl-header">
+            <span className="section-label">Downloads</span>
+            {finishedCount > 0 && (
+              <button
+                className="link-btn"
+                title="Remove finished, failed, and cancelled items (files already saved are not deleted)"
+                onClick={onClearFinished}
+              >
+                Clear finished{finishedCount > 1 ? ` (${finishedCount})` : ''}
+              </button>
+            )}
+          </div>
           {downloads.map((d) => (
             <StreamRow
               key={d.id}
